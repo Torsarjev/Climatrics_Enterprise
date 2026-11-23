@@ -1,4 +1,8 @@
-# ClimaTRICs Enterprise: GCB demo prototype (CONFIDENTIAL, under NDA)
+# Climatrics_Enterprise
+
+Enterprise Climate Risk, Sustainable Finance and Regulatory Intelligence Platform
+
+## GCB demo prototype (CONFIDENTIAL, under NDA)
 
 A working prototype for the GCB Bank technical demo. All data is synthetic ("Demo Bank Ghana"), and all model parameters are illustrative.
 
@@ -9,6 +13,10 @@ nvm use 24
 npm install
 npm run build && npx next start -p 3470   # open http://localhost:3470
 ```
+
+## Sign in
+
+Three demo accounts, one per role: `kofi.mensah@climatrics.demo` (analyst: loads data, runs tests), `ama.owusu@climatrics.demo` (approver) and `yaw.boateng@climatrics.demo` (auditor, read-only). The password is shared with the team; set `DEMO_PASSWORD` to change it, and `SESSION_SECRET` to fix the session-signing key (otherwise one is generated in `.data/`). Five wrong passwords lock an account for 15 minutes. SSO and MFA are planned for production, not built.
 
 To reset the demo to a clean state (no runs, a fresh audit log), stop the server, delete `.data/` and start it again.
 
