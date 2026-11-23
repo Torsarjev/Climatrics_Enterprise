@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ClimaTRICs Enterprise: GCB demo prototype (CONFIDENTIAL, under NDA)
 
-## Getting Started
+A working prototype for the GCB Bank technical demo. All data is synthetic ("Demo Bank Ghana"), and all model parameters are illustrative.
 
-First, run the development server:
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+nvm use 24
+npm install
+npm run build && npx next start -p 3470   # open http://localhost:3470
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+To reset the demo to a clean state (no runs, a fresh audit log), stop the server, delete `.data/` and start it again.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Where things live
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Path | What |
+|---|---|
+| `src/lib/params.ts` | **Every model parameter**: hazards, sector sensitivities, NGFS scenario paths, PD/LGD betas, bank capital and liquidity. Swap in the methodology team's values here. |
+| `src/lib/portfolio.ts` | Synthetic loan book generator, plus the demo extract with 5 deliberately bad rows |
+| `src/lib/ingest.ts` | Validation, exception queue, control-total reconciliation |
+| `src/lib/engine.ts` | Physical and transition scores → stressed PD/LGD → IFRS 9 staging and ECL → Monte Carlo VaR/CVaR → ICAAP/ILAAP |
+| `src/lib/store.ts` | Datasets, runs, maker-checker, audit log, hashes and reproducibility (JSON file in `.data/`) |
 
-## Learn More
+## Demo click-path (matches demo-plan.md)
 
-To learn more about Next.js, take a look at the following resources:
+1. **Overview:** the workflow.
+2. **Data:** "Load and validate". Show 600 accepted, 5 rejected with reasons, totals reconciled, and the dataset hash.
+3. **Portfolio:** exposure by sector, region, collateral and maturity, plus concentration.
+4. **Physical risk:** the map. Switch the hazard layers. Dashed outlines mark lower-confidence locations.
+5. **Transition risk:** sector sensitivity, readiness and the engagement watch-list.
+6. **Stress test:** as Kofi (analyst), run Current Policies 2050, bottom-up. Walk the results:
+   - sector impact
+   - the migration matrix
+   - staging
+   - the loss distribution
+   - the "Explain" panel for the top borrower
+7. **ICAAP & ILAAP:** the capital bridge and the breach of the minimum, then LCR under climate outflows. Compare against a Net Zero 2030 run.
+8. **Governance:**
+   - As Kofi, submit the run. It shows "waiting for an approver", and Kofi has no Approve button.
+   - Switch to Ama (approver). Her Overview shows "1 run awaiting your approval". She can approve but not run tests (separation of duties).
+   - Click "Re-run and verify" to show the identical hash.
+   - Switch to Yaw (auditor). A read-only banner appears, there are no action buttons, and his Overview shows the audit activity.
+9. **Reports:** the regulatory pack. Print or save it as PDF. Export the audit CSV from Governance.
+10. **Architecture:** layers, the production technology stack, security controls, integrations and the 12-month plan.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Tip: run Net Zero 2050 @ 2030 and Delayed Transition @ 2040 before the call, so "All scenarios side by side" on the ICAAP page is already populated.
