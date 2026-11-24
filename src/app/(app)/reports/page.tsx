@@ -1,5 +1,8 @@
 import Link from 'next/link';
-import { activeLoans, db, getRun } from '@/lib/store';
+import { activeLoans, db, getRun, screenRuns } from '@/lib/store';
+import { financedBook } from '@/lib/emissions';
+import { portfolioScreening } from '@/lib/esg/portfolio';
+import { boardView } from '@/lib/board';
 import { scenarioOf, sectorOf } from '@/lib/params';
 import { Badge, PageHead, Table } from '@/components/ui';
 import { PrintButton } from '@/components/print-button';
@@ -18,6 +21,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const S = run.summary, C = run.capital, Q = run.liquidity, L = run.lossDist;
   const ead = S.ead;
   const carbon = loans.filter((l) => sectorOf(l.sector).transition >= 0.5).reduce((a, l) => a + l.ead, 0);
+  const sr = await screenRuns();
+  const B = financedBook(loans);
+  const P = await portfolioScreening(loans, sr, dataset.id);
+  const V = await boardView(loans, sr, dataset.id);
+  const bySectorEm = [...B.rows.reduce((m, x) => m.set(x.l.sector, (m.get(x.l.sector) ?? 0) + x.financed), new Map<string, number>())].sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const t = (n: number) => `${(n / 1e3).toLocaleString('en-GB', { maximumFractionDigits: 0 })}k tCO₂e`;
   const highPhys = run.results.filter((r) => r.physical >= 0.5).reduce((a, r) => a + r.ead, 0);
 
   return (
@@ -79,7 +88,34 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         </section>
 
         <section>
-          <h3 className="mb-2 text-sm font-semibold">6. Methodology, data and governance</h3>
+          <h3 className="mb-2 text-sm font-semibold">6. Financed emissions (PCAF)</h3>
+          <Table head={['Metric', 'Value']} align={['l', 'r']} rows={[
+            ['Financed emissions (Scope 1 and 2 of borrowers)', t(B.total)], ['Emissions intensity', `${B.intensity.toFixed(0)} tCO₂e per GHS m lent`],
+            ['Exposure-weighted data quality score (1 best, 5 worst)', B.dqWeighted.toFixed(1)],
+            ...bySectorEm.map(([k, v]) => [`  ${sectorOf(k as Parameters<typeof sectorOf>[0]).name}`, `${t(v)} (${pct(v / B.total)})`]),
+          ]} />
+        </section>
+
+        <section>
+          <h3 className="mb-2 text-sm font-semibold">7. Sustainability screening (Engine I)</h3>
+          <Table head={['Metric', 'Value']} align={['l', 'r']} rows={[
+            ['Taxonomy-aligned exposure (approved screenings only)', `${ghs(P.tax.aligned)} (${pct(P.alignedRatio, 2)})`], ['Eligible, pending evidence or approval', `${ghs(P.tax.pending)} (${pct(P.tax.pending / P.ead)})`],
+            ['ESMS high-risk facilities', `${P.tier.High.n} · ${ghs(P.tier.High.ead)}`], ['Exclusion-list hits', `${P.gate.excluded.n} (${P.gate.review.n} under review)`],
+            ['NDC-contributing exposure', ghs(P.ndcTotal)], ['SDG-contributing exposure', ghs(P.sdgTotal)],
+          ]} />
+          <p className="mt-2 text-xs text-zinc-500">Rule fingerprint {P.fingerprint}; {P.screenedByAnalyst} analyst screenings, the rest from the loan extract.</p>
+        </section>
+
+        <section>
+          <h3 className="mb-2 text-sm font-semibold">8. Risk appetite and management actions</h3>
+          <Table head={['Limit', 'Current', 'Limit', 'Status']} align={['l', 'r', 'r', 'l']} rows={V.limits.map((l) => [`${l.id} ${l.metric}`, l.display, l.limitDisplay, <Badge key={l.id} tone={l.status === 'breach' ? 'red' : l.status === 'warning' ? 'amber' : 'green'}>{l.status === 'breach' ? 'Breach' : l.status === 'warning' ? 'Early warning' : 'Within'}</Badge>])} />
+          <p className="mt-3 text-xs font-semibold uppercase text-zinc-500">Open actions ({V.actions.length})</p>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-700">{V.actions.slice(0, 8).map((a, i) => <li key={i}>{a.subject}: {a.action} ({a.owner})</li>)}</ul>
+          <p className="mt-2 text-xs text-zinc-500">Limits are assessed on the active portfolio across all three NGFS views, not only this run. Thresholds are illustrative until set by the Board.</p>
+        </section>
+
+        <section>
+          <h3 className="mb-2 text-sm font-semibold">9. Methodology, data and governance</h3>
           <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-700">
             <li>Data: {dataset.name} ({dataset.id}, SHA-256 {dataset.hash.slice(0, 16)}…), {dataset.control.rowsAccepted} facilities accepted, {dataset.control.rowsRejected} rejected, reconciled.</li>
             <li>Model {rec.modelVersion}; hazard data {rec.hazardVersion}; parameters {rec.paramsHash.slice(0, 16)}…; loss simulation seed {rec.seed}.</li>

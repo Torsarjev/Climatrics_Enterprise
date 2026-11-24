@@ -6,6 +6,7 @@ import { NavLinks } from '@/components/nav-links';
 
 const NAV = [
   ['/', 'Executive dashboard', 'dashboard'],
+  ['/board', 'Board & management', 'board'],
   ['/data', 'Data ingestion', 'data'],
   ['/portfolio', 'Portfolio management', 'portfolio'],
   ['/screening', 'Sustainability screening', 'screening'],
@@ -23,6 +24,8 @@ const NAV = [
   ['/governance', 'Model governance', 'governance'],
   ['/methodology', 'Methodology', 'disclosure'],
   ['/architecture', 'Architecture', 'architecture'],
+  ['/security', 'Security & integrations', 'security'],
+  ['/implementation', 'Implementation & support', 'implementation'],
 ];
 
 export default async function AppLayout({ children }: Readonly<{ children: React.ReactNode }>) {

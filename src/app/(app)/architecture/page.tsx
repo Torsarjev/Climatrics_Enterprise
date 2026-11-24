@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Card, PageHead, Table } from '@/components/ui';
 
 const LAYERS = [
@@ -64,16 +65,10 @@ export default function ArchitecturePage() {
           <p className="mt-3 text-xs text-zinc-500">Every integration is idempotent, retried safely and reconciled at each hand-off.</p>
         </Card>
       </div>
-      <Card title="Implementation and knowledge transfer" className="mt-6">
-        <Table head={['Phase', 'Months', 'Outcome']} rows={[
-          ['0 · Discovery & architecture sign-off', 'M1', 'Data inventory, integration contracts, threat model, hosting decision'],
-          ['1 · Data foundation', 'M2–M3', 'Ingestion, validation, lineage, hazard and scenario data connectors'],
-          ['2 · Engines', 'M4–M6', 'Physical, transition, scenario, ECL and ICAAP/ILAAP engines'],
-          ['3 · Reporting & governance', 'M6–M8', 'Dashboards, approvals, regulatory pack, IFRS S1/S2 evidence'],
-          ['4 · Hardening & UAT', 'M8–M10', 'Penetration test, DR test, user acceptance, model validation support'],
-          ['5 · Rollout & handover', 'M11–M12', 'Training, runbooks, administrator manuals, source documentation, hypercare'],
-        ]} />
-      </Card>
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <Link href="/security" className="rounded-lg border border-zinc-200 bg-white p-4 hover:border-emerald-600"><p className="text-sm font-semibold">Security & integrations →</p><p className="mt-1 text-sm text-zinc-600">Controls live in this prototype, production controls, API catalogue, GCB integration contracts and scalability.</p></Link>
+        <Link href="/implementation" className="rounded-lg border border-zinc-200 bg-white p-4 hover:border-emerald-600"><p className="text-sm font-semibold">Implementation & support →</p><p className="mt-1 text-sm text-zinc-600">Twelve-month gated roadmap, deployment options, training by role, support model and knowledge transfer.</p></Link>
+      </div>
     </>
   );
 }

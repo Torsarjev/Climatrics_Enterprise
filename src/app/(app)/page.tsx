@@ -39,9 +39,12 @@ export default async function Overview() {
 
   return (
     <>
-      <div className="mb-6">
-        <h1 className="text-3xl font-semibold tracking-tight">Climate risk overview</h1>
-        <p className="mt-1 text-zinc-500">Demo Bank Ghana · synthetic portfolio as at 30 September 2026</p>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Climate risk overview</h1>
+          <p className="mt-1 text-zinc-500">Demo Bank Ghana · synthetic portfolio as at 30 September 2026</p>
+        </div>
+        <Link href="/board" className="text-sm text-[#3a5a45] hover:underline">Board risk appetite, KRIs and actions →</Link>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

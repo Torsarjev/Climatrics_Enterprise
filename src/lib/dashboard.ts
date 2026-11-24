@@ -36,7 +36,7 @@ function compute(loans: Loan[]) {
   const worst = runs.reduce((a, b) => (b.run.summary.eclStressed > a.run.summary.eclStressed ? b : a));
   return {
     ead, highRisk, highRiskParts, sectors, loans: loans.length,
-    scenarios: runs.map((x) => ({ key: x.scenario, label: x.label, note: x.note, ecl: x.run.summary.ecl, eclStressed: x.run.summary.eclStressed, ...x.run.capital })),
+    scenarios: runs.map((x) => ({ key: x.scenario, label: x.label, note: x.note, ecl: x.run.summary.ecl, eclStressed: x.run.summary.eclStressed, lcrBefore: x.run.liquidity.lcrBefore, lcrAfter: x.run.liquidity.lcrAfter, ...x.run.capital })),
     worstKey: worst.scenario,
     eclByStage: [1, 2, 3].map((st) => base.results.filter((r) => r.stage === st).reduce((a, r) => a + r.ecl, 0)),
     eclBase: base.summary.ecl,
