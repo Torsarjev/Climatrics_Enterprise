@@ -1,7 +1,12 @@
 import { CollateralType, REGIONS, SECTORS, SectorKey } from './params';
 import { rng } from './math';
 
+export interface VerifiedSite {
+  lat: number; lon: number; region: string; reference: string;
+}
+
 export interface Loan {
+  borrowerId?: string; facilitySite?: VerifiedSite; collateralSite?: VerifiedSite;
   id: string; borrower: string; sector: SectorKey; region: string;
   lat: number; lon: number; geoConfidence: 'gps' | 'address' | 'region';
   ead: number; collateralType: CollateralType; collateralValue: number;

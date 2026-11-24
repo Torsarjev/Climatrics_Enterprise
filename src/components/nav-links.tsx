@@ -32,7 +32,7 @@ export function Icon({ name, className = 'h-5 w-5' }: { name: string; className?
 
 export function NavLinks({ items }: { items: string[][] }) {
   const path = usePathname();
-  const isActive = (href: string) => (href === '/' ? path === '/' : path.startsWith(href) || (href === '/credit' && path.startsWith('/runs')));
+  const isActive = (href: string) => (href === '/' ? path === '/' : (path === href || path.startsWith(href + '/')) && !(href === '/screening' && ['/screening/portfolio', '/screening/review'].includes(path)) || (href === '/credit' && path.startsWith('/runs')));
   return (
     <nav className="flex gap-1 overflow-x-auto px-3 py-3 lg:flex-col lg:overflow-visible">
       {items.map(([href, label, icon]) => {

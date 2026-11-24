@@ -77,5 +77,5 @@ export async function boardView(loans: Loan[], runs: ScreenRunRecord[], datasetI
     })),
     ...limits.filter((l) => l.status !== 'within').map((l) => ({ source: `Risk appetite ${l.id}`, link: l.link, subject: l.metric, action: l.status === 'breach' ? 'Breach: escalate to Board Risk Committee with a remediation plan' : 'Early warning: report to ALCO / Risk Committee and agree actions', owner: l.owner, due: new Date(Date.now() + 14 * 864e5).toISOString(), status: 'Open', overdue: false })),
   ];
-  return { asOf, limits, kris, targets, actions };
+  return { asOf, limits, kris, targets, actions, screeningActions: P.actions };
 }

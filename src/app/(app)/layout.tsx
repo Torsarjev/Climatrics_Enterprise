@@ -6,11 +6,13 @@ import { NavLinks } from '@/components/nav-links';
 
 
 const NAV = [
+  ['/demo', 'Demo walkthrough', 'reports'],
   ['/', 'Executive dashboard', 'dashboard'],
   ['/board', 'Board & management', 'board'],
   ['/data', 'Data ingestion', 'data'],
   ['/portfolio', 'Portfolio management', 'portfolio'],
   ['/screening', 'Sustainability screening', 'screening'],
+  ['/screening/review', 'Screening review queue', 'governance'],
   ['/physical', 'Physical risk & GIS', 'physical'],
   ['/transition', 'Transition risk', 'transition'],
   ['/stress', 'Scenario analysis', 'stress'],
@@ -19,7 +21,7 @@ const NAV = [
   ['/credit', 'Credit risk & ECL', 'credit'],
   ['/capital', 'ICAAP & ILAAP', 'capital'],
   ['/emissions', 'Carbon accounting', 'emissions'],
-  ['/alignment', 'SDG & taxonomy', 'sdg'],
+  ['/screening/portfolio', 'Portfolio screening', 'sdg'],
   ['/disclosure', 'IFRS S2 disclosure', 'disclosure'],
   ['/reports', 'Regulatory reports', 'reports'],
   ['/governance', 'Model governance', 'governance'],

@@ -2,8 +2,8 @@
 
 import { useActionState, useMemo, useState } from 'react';
 import { screenRunAction } from '@/app/actions';
-import { ACTIVITIES, EVIDENCE } from '@/lib/esg/rules';
-import { neededEvidence, screen, visibleQuestions, type EvidenceStatus, type ScreenInput } from '@/lib/esg/engine';
+import { ACTIVITIES } from '@/lib/esg/rules';
+import { evidenceLabel, neededEvidence, screen, visibleQuestions, type EvidenceStatus, type ScreenInput } from '@/lib/esg/engine';
 import { btnClass } from './ui';
 
 export interface FacilityOption { id: string; borrower: string; sector: string; sectorName: string; region: string; ead: number; preset: ScreenInput }
@@ -11,10 +11,17 @@ export interface FacilityOption { id: string; borrower: string; sector: string; 
 const m = (n: number) => `GHS ${(n / 1e6).toFixed(1)}m`;
 const TONE = { red: 'bg-red-50 text-red-700 ring-red-200', amber: 'bg-amber-50 text-amber-800 ring-amber-200', green: 'bg-emerald-50 text-emerald-800 ring-emerald-200' };
 
-export function ScreenBuilder({ facilities }: { facilities: FacilityOption[] }) {
+export function ScreenBuilder({ facilities, initialId, previous }: { facilities: FacilityOption[]; initialId?: string; previous?: { id: string; input: ScreenInput } }) {
   const [state, action, pending] = useActionState(screenRunAction, null);
-  const [fid, setFid] = useState(facilities[0].id);
-  const [input, setInput] = useState<ScreenInput>(facilities[0].preset);
+  const initial = facilities.find((facility) => facility.id === initialId) ?? facilities[0];
+  const [fid, setFid] = useState(initial.id);
+  const [input, setInput] = useState<ScreenInput>(() => previous ? {
+    ...initial.preset,
+    activities: previous.input.activities,
+    transitionRiskScore: previous.input.transitionRiskScore,
+    responses: previous.input.responses,
+    evidence: Object.fromEntries(Object.entries(previous.input.evidence).map(([id, item]) => [id, { ...item, status: item.status === 'verified' ? 'provided' : item.status }])),
+  } : initial.preset);
   const pick = (id: string) => { const f = facilities.find((x) => x.id === id)!; setFid(id); setInput(structuredClone(f.preset)); };
   const fac = facilities.find((x) => x.id === fid)!;
 
@@ -25,11 +32,15 @@ export function ScreenBuilder({ facilities }: { facilities: FacilityOption[] }) 
 
   const setAct = (i: number, patch: Partial<ScreenInput['activities'][number]>) => setInput((s) => ({ ...s, activities: s.activities.map((a, j) => (j === i ? { ...a, ...patch } : a)) }));
   const setResp = (q: string, v: boolean | null) => setInput((s) => ({ ...s, responses: { ...s.responses, [q]: v } }));
-  const setEv = (e: string, patch: { status?: EvidenceStatus; ref?: string }) => setInput((s) => ({ ...s, evidence: { ...s.evidence, [e]: { ...(s.evidence[e] ?? { status: 'missing' as const }), ...patch } } }));
+  const setEv = (e: string, patch: Partial<ScreenInput['evidence'][string]>) => setInput((s) => ({ ...s, evidence: { ...s.evidence, [e]: { ...(s.evidence[e] ?? { status: 'missing' as const }), ...patch } } }));
   const field = 'rounded-md bg-white px-2 py-1.5 text-sm ring-1 ring-zinc-300';
 
   return (
     <form action={action} className="space-y-6">
+      {previous && fid === previous.input.facilityId && <>
+        <input type="hidden" name="parent" value={previous.id} />
+        <p className="text-sm text-zinc-600">Re-screening assessment {previous.id}. Evidence must be verified for the new assessment.</p>
+      </>}
       <input type="hidden" name="payload" value={JSON.stringify(input)} />
       <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_1fr]">
         <label className="text-xs text-zinc-600">Facility (from the active portfolio)
@@ -51,14 +62,17 @@ export function ScreenBuilder({ facilities }: { facilities: FacilityOption[] }) 
               <select value={a.code} onChange={(e) => setAct(i, { code: e.target.value })} className={field}>
                 {Object.entries(ACTIVITIES).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
               </select>
-              <label className="flex items-center gap-1 text-xs text-zinc-500">GHS m<input type="number" min="0" step="0.1" value={a.amount / 1e6} onChange={(e) => setAct(i, { amount: Math.round(Number(e.target.value) * 1e6) })} className={`w-full ${field}`} /></label>
+              <label className="flex items-center gap-1 text-xs text-zinc-500">GHS m<input type="number" min="0" step="any" value={a.amount / 1e6} onChange={(e) => setAct(i, { amount: Math.round(Number(e.target.value) * 1e6) })} className={`w-full ${field}`} /></label>
               <button type="button" onClick={() => setInput((s) => ({ ...s, activities: s.activities.filter((_, j) => j !== i) }))} className="text-zinc-400 hover:text-red-600" aria-label="Remove activity">✕</button>
+              {a.code === 'energy_efficiency' && <label className="col-span-full flex items-center gap-2 text-sm">Energy savings (%)
+                <input type="number" min="0" max="100" step="0.01" value={a.efficiencyGainPct ?? ''} onChange={(e) => setAct(i, { efficiencyGainPct: e.target.value === '' ? null : Number(e.target.value) })} className={`w-32 ${field}`} />
+              </label>}
             </div>
           ))}
         </div>
         <div className="mt-2 flex items-center justify-between text-xs">
-          <button type="button" onClick={() => setInput((s) => ({ ...s, activities: [...s.activities, { id: `A${s.activities.length + 1}`, code: 'general', amount: Math.max(0, fac.ead - allocated) }] }))} className="text-[#3a5a45] underline">+ Add activity</button>
-          <span className={allocated > fac.ead + 1 ? 'font-semibold text-red-600' : 'text-zinc-500'}>Allocated {m(allocated)} of {m(fac.ead)}{allocated > fac.ead + 1 ? ' · exceeds the outstanding' : allocated < fac.ead ? ` · ${m(fac.ead - allocated)} unallocated (counted as unassessed)` : ''}</span>
+          <button type="button" onClick={() => setInput((s) => ({ ...s, activities: [...s.activities, { id: crypto.randomUUID(), code: 'general', amount: Math.max(0, fac.ead - allocated) }] }))} className="text-[#3a5a45] underline">+ Add activity</button>
+          <span className={allocated > fac.ead ? 'font-semibold text-red-600' : 'text-zinc-500'}>Allocated {m(allocated)} of {m(fac.ead)}{allocated > fac.ead ? ' · exceeds the outstanding' : allocated < fac.ead ? ` · ${m(fac.ead - allocated)} unallocated (counted as unassessed)` : ''}</span>
         </div>
       </section>
 
@@ -84,13 +98,21 @@ export function ScreenBuilder({ facilities }: { facilities: FacilityOption[] }) 
       <section>
         <p className="text-sm font-semibold">3 · Evidence <span className="font-normal text-zinc-500">(verification is done by the reviewer)</span></p>
         <div className="mt-2 space-y-2">
+          <label className="block text-sm">Transition risk score (1–5, optional)
+            <input type="number" min="1" max="5" step="0.01" value={input.transitionRiskScore ?? ''} onChange={(event) => {
+              const value = event.target.value;
+              setInput((current) => ({ ...current, transitionRiskScore: value ? Number(value) : undefined }));
+            }} className={`ml-2 w-24 ${field}`} />
+          </label>
+          {input.transitionRiskScore !== undefined && <p className="text-sm text-zinc-600">Engine II uses this score after independent screening approval and verification of its supporting assessment.</p>}
           {evidenceIds.map((e) => (
-            <div key={e} className="grid items-center gap-2 text-sm md:grid-cols-[1fr_9rem_14rem]">
-              <span>{EVIDENCE[e]}</span>
+            <div key={e} className="grid items-center gap-2 text-sm md:grid-cols-[1fr_8rem_12rem_10rem]">
+              <span>{evidenceLabel(e)}</span>
               <select value={input.evidence[e]?.status === 'provided' ? 'provided' : 'missing'} onChange={(x) => setEv(e, { status: x.target.value as EvidenceStatus })} className={field}>
                 <option value="missing">Missing</option><option value="provided">Provided</option>
               </select>
-              <input placeholder="document reference" value={input.evidence[e]?.ref ?? ''} onChange={(x) => setEv(e, { ref: x.target.value })} className={field} />
+              <input required={input.evidence[e]?.status === 'provided'} aria-label={`Reference for ${evidenceLabel(e)}`} placeholder="document reference" value={input.evidence[e]?.ref ?? ''} onChange={(x) => setEv(e, { ref: x.target.value })} className={field} />
+              <input type="date" aria-label={`Document date for ${evidenceLabel(e)}`} value={input.evidence[e]?.date ?? ''} onChange={(x) => setEv(e, { date: x.target.value })} className={field} />
             </div>
           ))}
         </div>

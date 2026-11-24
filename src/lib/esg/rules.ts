@@ -6,6 +6,7 @@ export type Framework = 'ESMS' | 'NDC' | 'TAXONOMY' | 'SDG';
 export type Cond =
   | { q: string; eq: boolean }
   | { fact: string; gte?: number; lt?: number }
+  | { efficiencyGainPct: { gte?: number; lt?: number } }
   | { activity: string[] }
   | { sector: string[] }
   | { evidence: string; atLeast: 'provided' | 'verified' }
@@ -24,11 +25,11 @@ export interface Criterion {
   programme?: string; target?: string; objective?: string;
 }
 
-export const FRAMEWORK_VERSIONS: Record<Framework, { name: string; version: string; source: string; status: string }> = {
-  ESMS: { name: 'Environmental & Social Management System', version: 'ifc-ps-2012+ifc-excl-2007 · provisional v0.1', source: 'IFC Exclusion List (2007), IFC Performance Standards (2012), Ghana Environmental Assessment Regulations 1999 (LI 1652)', status: 'Provisional, not GCB policy: replace with GCB’s approved ESMS policy and exclusion list' },
-  NDC: { name: 'Ghana Nationally Determined Contribution', version: 'gh-ndc-2021 · representative v0.1', source: 'Ghana updated NDC (2021), EPA (gcr.epa.gov.gh/ndcs-2/)', status: 'Representative subset; programme labels to be verified against the official programmes of action' },
-  TAXONOMY: { name: 'Ghana Green Finance Taxonomy', version: 'gh-gft · representative v0.1', source: 'Ministry of Finance, Ghana Green Finance Taxonomy (mofep.gov.gh)', status: 'Representative subset; technical thresholds to be verified against the official taxonomy' },
-  SDG: { name: 'UN Sustainable Development Goals', version: 'un-sdg-targets · v0.1', source: 'United Nations, sdgs.un.org/goals (target wording)', status: 'Target mapping provisional pending GCB sustainability team review' },
+export const FRAMEWORK_VERSIONS: Record<Framework, { name: string; version: string; source: string; url: string; status: string }> = {
+  ESMS: { name: 'Environmental & Social Management System', version: 'ifc-ps-2012+ifc-excl-2025 · provisional v0.2', source: 'IFC Exclusion List (December 2025 amendment), IFC Performance Standards (2012), Ghana Environmental Assessment Regulations 1999 (LI 1652)', url: 'https://www.ifc.org/en/what-we-do/sector-expertise/sustainability/ifc-exclusion-list-2007', status: 'Provisional, not GCB policy: replace with GCB’s approved ESMS policy and exclusion list' },
+  NDC: { name: 'Ghana Nationally Determined Contribution', version: 'gh-ndc-2021 · representative v0.2', source: 'Ghana updated NDC (2021), UNFCCC registry', url: 'https://unfccc.int/documents/497515', status: 'Representative activity mappings; programme IDs are internal rule identifiers' },
+  TAXONOMY: { name: 'Ghana Green Finance Taxonomy', version: 'gh-gft-phase-1-2024 · representative v0.2', source: 'Ministry of Finance, Ghana Green Finance Taxonomy (mofep.gov.gh)', url: 'https://www.mofep.gov.gh/reports/2024-10-09/green-taxonomy-framework-for-ghana', status: 'Representative subset; technical thresholds to be verified against the official taxonomy' },
+  SDG: { name: 'UN Sustainable Development Goals', version: 'un-sdg-targets · v0.1', source: 'United Nations, sdgs.un.org/goals (target wording)', url: 'https://sdgs.un.org/goals', status: 'Target mapping provisional pending GCB sustainability team review' },
 };
 
 export const ACTIVITIES: Record<string, { name: string; evidence?: string }> = {
@@ -52,6 +53,7 @@ export const ACTIVITIES: Record<string, { name: string; evidence?: string }> = {
 };
 
 export const EVIDENCE: Record<string, string> = {
+  EV_TRANSITION_SCORE: 'Transition assessment supporting the 1–5 score',
   EV_SOLAR_TECH: 'Solar system technical specification, installed capacity and commissioning certificate',
   EV_RE_TECH: 'Project technical specification and commissioning evidence',
   EV_EE_AUDIT: 'Energy audit showing the efficiency gain',
@@ -63,7 +65,6 @@ export interface Question { id: string; text: string; showWhen?: Cond }
 export const QUESTIONS: Question[] = [
   { id: 'Q_EX_LABOUR', text: 'Does the borrower use forced labour or harmful child labour?' },
   { id: 'Q_EX_WEAPONS', text: 'Does the business produce or trade weapons and munitions?' },
-  { id: 'Q_EX_RADIOACTIVE', text: 'Does it produce or trade radioactive materials?' },
   { id: 'Q_EX_ASBESTOS', text: 'Does it produce, trade or use unbonded asbestos fibres?' },
   { id: 'Q_EX_LOGGING', text: 'Does it carry out commercial logging in primary tropical moist forest?' },
   { id: 'Q_EX_ILLEGAL', text: 'Does it produce or trade anything illegal under Ghanaian law or international conventions (banned pesticides, ozone-depleting substances, CITES wildlife)?' },
@@ -78,16 +79,17 @@ export const QUESTIONS: Question[] = [
   { id: 'Q_SOLAR_GRID', text: 'Is the solar system connected to the site’s supply or grid (not a standby generator replacement only)?', showWhen: { activity: ['solar_pv'] } },
 ];
 
-const IFC_EX = 'IFC Exclusion List (2007)';
+const IFC_EX = 'IFC Exclusion List (December 2025 amendment)';
 const ex = (id: string, q: string, title: string): Criterion => ({
   id, framework: 'ESMS', kind: 'exclusion', title, source: IFC_EX, ref: 'Exclusion list item', scope: 'facility',
   failWhen: { q, eq: true }, passWhen: { q, eq: false }, severity: 'high', questions: [q], action: 'Exclusion hit: credit progression blocked',
 });
 
+export const DEMO_EFFICIENCY_GAIN_PCT = 20;
+
 export const CRITERIA: Criterion[] = [
   ex('EX-01', 'Q_EX_LABOUR', 'No forced labour or harmful child labour'),
   ex('EX-02', 'Q_EX_WEAPONS', 'No production or trade in weapons and munitions'),
-  ex('EX-03', 'Q_EX_RADIOACTIVE', 'No production or trade in radioactive materials'),
   ex('EX-04', 'Q_EX_ASBESTOS', 'No unbonded asbestos fibres'),
   ex('EX-05', 'Q_EX_LOGGING', 'No commercial logging in primary tropical moist forest'),
   ex('EX-06', 'Q_EX_ILLEGAL', 'Nothing illegal under host-country law or international conventions'),
@@ -99,7 +101,7 @@ export const CRITERIA: Criterion[] = [
     appliesWhen: { sector: ['agri', 'mining', 'manuf', 'power', 'constr'] }, failWhen: { any: [{ q: 'Q_WATER_STRESS', eq: true }, { fact: 'droughtHazard', gte: 0.6 }] }, passWhen: { q: 'Q_WATER_STRESS', eq: false },
     severity: 'medium', questions: ['Q_WATER_STRESS'], action: 'Water management plan: metering, recycling and a secure alternative supply' },
   { id: 'ES-WASTEWATER', framework: 'ESMS', kind: 'risk', title: 'Wastewater treated before discharge', source: 'IFC Performance Standard 3 (2012)', ref: 'Pollution prevention', scope: 'facility',
-    appliesWhen: { sector: ['agri', 'mining', 'manuf', 'oilgas'] }, failWhen: { q: 'Q_WASTEWATER', eq: true }, passWhen: { q: 'Q_WASTEWATER', eq: false },
+    appliesWhen: { sector: ['agri', 'mining', 'manuf', 'oilgas'] }, failWhen: { q: 'Q_WASTEWATER', eq: true }, passWhen: { all: [{ q: 'Q_WASTEWATER', eq: false }, { evidence: 'EV_WASTEWATER', atLeast: 'verified' }] },
     severity: 'high', evidence: 'EV_WASTEWATER', questions: ['Q_WASTEWATER'], action: 'Install wastewater treatment and report discharge monitoring to EPA standards' },
   { id: 'ES-HAZMAT', framework: 'ESMS', kind: 'risk', title: 'Hazardous materials managed', source: 'IFC Performance Standard 3 (2012)', ref: 'Hazardous materials management', scope: 'facility',
     appliesWhen: { sector: ['agri', 'mining', 'oilgas', 'power', 'manuf'] }, failWhen: { q: 'Q_HAZMAT', eq: true }, passWhen: { q: 'Q_HAZMAT', eq: false },
@@ -117,13 +119,13 @@ export const CRITERIA: Criterion[] = [
   { id: 'ES-CLIMATE', framework: 'ESMS', kind: 'risk', title: 'Physical climate risk at the site', source: 'ClimaTRICs Engine II physical risk score', ref: 'Score ≥ 3.0 of 5 by 2050', scope: 'facility',
     failWhen: { fact: 'physical2050', gte: 0.5 }, passWhen: { fact: 'physical2050', lt: 0.5 }, severity: 'medium', action: 'Climate adaptation measures and insurance for the main hazard' },
 
-  { id: 'NDC-RE', framework: 'NDC', kind: 'match', title: 'Scale up renewable energy (solar, mini-grids, small hydro)', source: 'Ghana updated NDC (2021)', ref: 'Energy sector, mitigation', scope: 'activity', programme: 'GH-NDC Energy · Renewable energy scale-up', objective: 'Mitigation',
+  { id: 'NDC-RE', framework: 'NDC', kind: 'match', title: 'Scale up renewable energy (solar, mini-grids, small hydro)', source: 'Ghana updated NDC (2021)', ref: 'Annex 2, renewable energy penetration (p. 26)', scope: 'activity', programme: 'GH-NDC Energy · Renewable energy scale-up', objective: 'Mitigation',
     appliesWhen: { activity: ['solar_pv', 'mini_grid', 'small_hydro'] }, passWhen: { activity: ['solar_pv', 'mini_grid', 'small_hydro'] } },
-  { id: 'NDC-EE', framework: 'NDC', kind: 'match', title: 'Energy efficiency in industry', source: 'Ghana updated NDC (2021)', ref: 'Energy sector, mitigation', scope: 'activity', programme: 'GH-NDC Energy · Industrial energy efficiency', objective: 'Mitigation',
+  { id: 'NDC-EE', framework: 'NDC', kind: 'match', title: 'Energy efficiency in industry', source: 'Ghana updated NDC (2021)', ref: 'Annex 2, energy efficiency in homes, industry and commerce (p. 25)', scope: 'activity', programme: 'GH-NDC Energy · Industrial energy efficiency', objective: 'Mitigation',
     appliesWhen: { activity: ['energy_efficiency'] }, passWhen: { activity: ['energy_efficiency'] } },
-  { id: 'NDC-TR', framework: 'NDC', kind: 'match', title: 'Clean and efficient transport', source: 'Ghana updated NDC (2021)', ref: 'Transport sector, mitigation', scope: 'activity', programme: 'GH-NDC Transport · Clean mobility', objective: 'Mitigation',
+  { id: 'NDC-TR', framework: 'NDC', kind: 'match', title: 'Clean and efficient transport', source: 'Ghana updated NDC (2021)', ref: 'Annex 2, expansion of inter- and intra-city transportation (p. 25)', scope: 'activity', programme: 'GH-NDC Transport · Clean mobility', objective: 'Mitigation',
     appliesWhen: { activity: ['e_mobility'] }, passWhen: { activity: ['e_mobility'] } },
-  { id: 'NDC-RES', framework: 'NDC', kind: 'match', title: 'Resilient infrastructure and flood protection', source: 'Ghana updated NDC (2021)', ref: 'Adaptation', scope: 'activity', programme: 'GH-NDC Adaptation · Resilient infrastructure', objective: 'Adaptation',
+  { id: 'NDC-RES', framework: 'NDC', kind: 'match', title: 'Resilient infrastructure and flood protection', source: 'Ghana updated NDC (2021)', ref: 'Indicative adaptation mapping, pending programme confirmation', scope: 'activity', programme: 'GH-NDC Adaptation · Resilient infrastructure', objective: 'Adaptation',
     appliesWhen: { activity: ['flood_defence'] }, passWhen: { activity: ['flood_defence'] } },
 
   { id: 'TX-ELIG', framework: 'TAXONOMY', kind: 'eligibility', title: 'Activity is listed in the taxonomy', source: 'Ghana Green Finance Taxonomy (MoF)', ref: 'Eligible activities (representative)', scope: 'activity',
@@ -133,12 +135,17 @@ export const CRITERIA: Criterion[] = [
     appliesWhen: { activity: ['solar_pv'] }, failWhen: { q: 'Q_SOLAR_GRID', eq: false }, passWhen: { all: [{ q: 'Q_SOLAR_GRID', eq: true }, { evidence: 'EV_SOLAR_TECH', atLeast: 'verified' }] }, evidence: 'EV_SOLAR_TECH', questions: ['Q_SOLAR_GRID'] },
   { id: 'TX-RE-TECH', framework: 'TAXONOMY', kind: 'technical', title: 'Technical screening criteria met', source: 'Ghana Green Finance Taxonomy (MoF)', ref: 'Activity technical criteria (to verify)', scope: 'activity',
     appliesWhen: { activity: ['mini_grid', 'small_hydro', 'e_mobility', 'flood_defence'] }, passWhen: { evidence: 'EV_RE_TECH', atLeast: 'verified' }, evidence: 'EV_RE_TECH' },
-  { id: 'TX-EE-TECH', framework: 'TAXONOMY', kind: 'technical', title: 'Efficiency gain evidenced by an energy audit', source: 'Ghana Green Finance Taxonomy (MoF)', ref: 'Energy efficiency: technical criteria (to verify)', scope: 'activity',
-    appliesWhen: { activity: ['energy_efficiency'] }, passWhen: { evidence: 'EV_EE_AUDIT', atLeast: 'verified' }, evidence: 'EV_EE_AUDIT' },
+  { id: 'TX-EE-TECH', framework: 'TAXONOMY', kind: 'technical', title: 'Efficiency gain evidenced by an energy audit', source: 'Ghana Green Finance Taxonomy (MoF)', ref: `Illustrative demo threshold of ${DEMO_EFFICIENCY_GAIN_PCT}% energy savings, pending official criterion verification`, scope: 'activity',
+    appliesWhen: { activity: ['energy_efficiency'] }, failWhen: { efficiencyGainPct: { lt: DEMO_EFFICIENCY_GAIN_PCT } },
+    passWhen: { all: [{ efficiencyGainPct: { gte: DEMO_EFFICIENCY_GAIN_PCT } }, { evidence: 'EV_EE_AUDIT', atLeast: 'verified' }] }, evidence: 'EV_EE_AUDIT', action: 'Energy savings fall below the illustrative demo threshold' },
   { id: 'TX-SAFE-EXCL', framework: 'TAXONOMY', kind: 'safeguard', title: 'No exclusion-list activity', source: 'Ghana Green Finance Taxonomy (MoF)', ref: 'Minimum safeguards', scope: 'activity',
-    appliesWhen: { activity: ['solar_pv', 'mini_grid', 'small_hydro', 'energy_efficiency', 'e_mobility', 'flood_defence'] }, passWhen: { exclusionGate: 'pass' } },
+    appliesWhen: { activity: ['solar_pv', 'mini_grid', 'small_hydro', 'energy_efficiency', 'e_mobility', 'flood_defence'] }, failWhen: { not: { exclusionGate: 'pass' } }, passWhen: { exclusionGate: 'pass' } },
   { id: 'TX-SAFE-SOCIAL', framework: 'TAXONOMY', kind: 'safeguard', title: 'Minimum social safeguards (labour, land)', source: 'Ghana Green Finance Taxonomy (MoF)', ref: 'Minimum safeguards', scope: 'activity',
-    appliesWhen: { activity: ['solar_pv', 'mini_grid', 'small_hydro', 'energy_efficiency', 'e_mobility', 'flood_defence'] }, passWhen: { criterionNotFailed: ['ES-OHS', 'ES-LAND', 'EX-01'] } },
+    appliesWhen: { activity: ['solar_pv', 'mini_grid', 'small_hydro', 'energy_efficiency', 'e_mobility', 'flood_defence'] }, failWhen: { not: { criterionNotFailed: ['ES-OHS', 'ES-LAND', 'EX-01'] } }, passWhen: { criterionNotFailed: ['ES-OHS', 'ES-LAND', 'EX-01'] } },
+
+  { id: 'TX-SAFE-ENV', framework: 'TAXONOMY', kind: 'safeguard', title: 'Environmental and community safeguards', source: 'Ghana Green Finance Taxonomy (MoF)', ref: 'Minimum safeguards (provisional mapping)', scope: 'activity',
+    appliesWhen: { activity: ['solar_pv', 'mini_grid', 'small_hydro', 'energy_efficiency', 'e_mobility', 'flood_defence'] },
+    passWhen: { all: [{ criterionNotFailed: ['ES-WASTEWATER', 'ES-BIODIV', 'ES-COMMUNITY'] }, { any: [{ not: { sector: ['agri', 'mining', 'oilgas', 'power', 'manuf', 'constr', 'renew'] } }, { all: [{ q: 'Q_PERMIT', eq: true }, { evidence: 'EV_EPA_PERMIT', atLeast: 'verified' }] }] }] } },
 
   { id: 'SDG-7.2', framework: 'SDG', kind: 'contribution', title: 'Increase the share of renewable energy', source: 'UN SDG target 7.2', ref: 'sdgs.un.org/goals/goal7', scope: 'activity', target: '7.2',
     appliesWhen: { activity: ['solar_pv', 'mini_grid', 'small_hydro'] }, passWhen: { activity: ['solar_pv', 'mini_grid', 'small_hydro'] } },

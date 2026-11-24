@@ -10,8 +10,9 @@ A working prototype for the GCB Bank technical demo. All data is synthetic ("Dem
 
 ```bash
 nvm use 24
-npm install
-npm run build && npx next start -p 3470   # open http://localhost:3470
+npm ci
+npm run demo:setup
+npm run build && npm start -- -p 3470   # open http://localhost:3470
 ```
 
 ## CI/CD
@@ -24,7 +25,7 @@ npm run build && npx next start -p 3470   # open http://localhost:3470
 
 ## Sign in
 
-Three demo accounts, one per role: `kofi.mensah@climatrics.demo` (analyst: loads data, runs tests), `ama.owusu@climatrics.demo` (approver) and `yaw.boateng@climatrics.demo` (auditor, read-only). The password is not in the code: set `DEMO_PASSWORD_KEY` in `.env.local` locally (quote it if it contains `#`) or in the host's environment variables, and `SESSION_SECRET_KEY` to fix the session-signing key (otherwise one is generated in `.data/`). Five wrong passwords lock an account for 15 minutes. SSO and MFA are planned for production, not built.
+Three demo accounts, one per role: `kofi.mensah@climatrics.demo` (analyst: loads data, runs tests), `ama.owusu@climatrics.demo` (approver) and `yaw.boateng@climatrics.demo` (auditor, read-only). The password is not in the code: set `DEMO_PASSWORD_KEY` in `.env.local` locally (quote it if it contains `#`) or in the host's environment variables, and `SESSION_SECRET_KEY` to fix the session-signing key (otherwise one is generated in `.data/`). Five wrong passwords lock an account for 15 minutes. Authenticator-app MFA is enabled by default. The local setup command creates an ignored `.env.local` with a generated password, a signing key and `MFA_MODE=off` for private rehearsal. Read `DEMO_PASSWORD_KEY` from that file to sign in. Remove `MFA_MODE=off` and restart to rehearse authenticator enrollment. Production SSO is planned.
 
 To reset the demo to a clean state (no runs, a fresh audit log), stop the server, delete `.data/` and start it again.
 
@@ -38,10 +39,12 @@ To reset the demo to a clean state (no runs, a fresh audit log), stop the server
 | `src/lib/engine.ts` | Physical and transition scores → stressed PD/LGD → IFRS 9 staging and ECL → Monte Carlo VaR/CVaR → ICAAP/ILAAP |
 | `src/lib/store.ts` | Datasets, runs, maker-checker, audit log, hashes and reproducibility (JSON file in `.data/`) |
 
-## Demo click-path (matches demo-plan.md)
+## Demo click-path
+
+Open **Demo walkthrough** from the sidebar for a guided flow with links to the active dataset and latest stress run.
 
 1. **Overview:** the workflow.
-2. **Data:** "Load and validate". Show 600 accepted, 5 rejected with reasons, totals reconciled, and the dataset hash.
+2. **Data:** "Load and validate". Show 1,000 accepted, 5 rejected with reasons, totals reconciled, and the dataset hash.
 3. **Portfolio:** exposure by sector, region, collateral and maturity, plus concentration.
 4. **Physical risk:** the map. Switch the hazard layers. Dashed outlines mark lower-confidence locations.
 5. **Transition risk:** sector sensitivity, readiness and the engagement watch-list.
@@ -61,3 +64,19 @@ To reset the demo to a clean state (no runs, a fresh audit log), stop the server
 10. **Architecture:** layers, the production technology stack, security controls, integrations and the 12-month plan.
 
 Tip: run Net Zero 2050 @ 2030 and Delayed Transition @ 2040 before the call, so "All scenarios side by side" on the ICAAP page is already populated.
+
+## Engine I sustainable finance demo
+
+Open **Sustainability screening** and select Volta Agro Processing to see the synthetic GHS 80m facility split between GHS 20m of rooftop solar and GHS 60m of other proceeds. Run the assessment to show the enhanced due diligence referral, pending solar allocation, potential NDC and SDG contributions, and actions for the permit and wastewater findings.
+
+Use **Revise and re-screen** to record updated answers and synthetic evidence in a new assessment. Submit as Kofi, then sign in as Ama and select the individual documents verified during review. Aligned exposure is calculated from current approved activity allocations that pass the applicable rules. Review outcomes and evidence lineage are available from the facility report.
+
+Open **Portfolio screening** to see the consolidated four-framework breakdown, decision guidance and action queue. Use **Save portfolio screening** for a repeatable snapshot with a JSON report. The Board dashboard links to the action queue by management action. The rules and evidence are illustrative. GCB’s approved ESMS criteria and verified production framework mappings are required before production use.
+
+## Engine II borrower physical risk
+
+**Physical risk & GIS** uses the active loan extract and the latest Engine I assessment for each facility. Set the optional transition risk score (1–5) in the Engine I questionnaire and attach its source assessment as evidence. On independent approval, the reviewer selects that evidence as verified. Draft, returned, escalated and unverified scores are unavailable for Engine II aggregation.
+
+The CSV accepts optional `borrowerId` for grouping facilities and separate `facilityLat`, `facilityLon`, `facilityRegion`, `facilityLocationRef` and `collateralLat`, `collateralLon`, `collateralRegion`, `collateralLocationRef` columns. For either location, provide the four values together. The reference identifies the bank’s verification record. Legacy coordinates support indicative scoring; records without a borrower ID are shown individually. The model applies national CCKP signals to regional hazard proxies and exposes site vulnerability inputs in the profile.
+
+Overall scores require verified locations, an approved evidenced transition score across the borrower’s facilities, and a GCB policy reference supplied through `GCB_CLIMATE_AGGREGATION_REFERENCE`. Set `GCB_CLIMATE_AGGREGATION_METHOD` to `max` or `weighted` as specified in the approved policy. For `weighted`, set `GCB_CLIMATE_PHYSICAL_WEIGHT` to a number strictly between 0 and 1; the remaining weight applies to transition risk. The deployment owner is responsible for configuring the approved method and reference. The demo has no GCB policy configured and displays overall scores as pending.
