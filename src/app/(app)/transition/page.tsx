@@ -26,9 +26,9 @@ export default async function TransitionPage() {
     <>
       <PageHead area="Area 3 · Transition risk" title="Transition risk" intro="Exposure to policy, carbon-price, technology and market shifts. Sector sensitivity is adjusted for each counterparty's emissions intensity and transition readiness." />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Carbon-intensive sectors" value={pct(intEad / ead)} sub={ghs(intEad)} tone="warn" />
+        <Stat href="/methodology#heatmap" label="Carbon-intensive sectors" value={pct(intEad / ead)} sub={ghs(intEad)} tone="warn" />
         <Stat label="With a credible transition plan" value={pct(plans / (intEad || 1))} sub="of carbon-intensive EAD" />
-        <Stat label="Financed emissions" value={`${(financed / 1000).toFixed(0)}k tCO₂e`} sub="PCAF · detail on the Emissions page" />
+        <Stat href="/emissions" label="Financed emissions" value={`${(financed / 1000).toFixed(0)}k tCO₂e`} sub="PCAF · detail on the Emissions page" />
         <Stat label="Sectors assessed" value={String(SECTORS.length)} sub="sensitivity scored 1–5" />
       </div>
       <Card title="Sector sensitivity and counterparty readiness" className="mt-6">

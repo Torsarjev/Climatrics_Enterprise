@@ -24,18 +24,25 @@ function compute(loans: Loan[]) {
     const e = xs.reduce((a, l) => a + l.ead, 0);
     const p = xs.reduce((a, l) => a + phys.get(l.id)! * l.ead, 0) / e;
     const physical = physLevel(p), transition = transLevel(s.transition);
-    return { name: s.name, ead: e, physical, transition, overall: rank[physical] >= rank[transition] ? physical : transition };
+    return { key: s.key, name: s.name, ead: e, physScore: p, transScore: s.transition, physical, transition, overall: rank[physical] >= rank[transition] ? physical : transition };
   }).sort((a, b) => rank[b.overall] - rank[a.overall] || b.ead - a.ead);
-  const highRisk = loans.filter((l) => phys.get(l.id)! >= 0.5 || (sectorOf(l.sector).transition >= 0.6 && !l.transitionPlan)).reduce((a, l) => a + l.ead, 0);
+  const isPhys = (l: Loan) => phys.get(l.id)! >= 0.5;
+  const isTrans = (l: Loan) => sectorOf(l.sector).transition >= 0.6 && !l.transitionPlan;
+  const sumEad = (f: (l: Loan) => boolean) => loans.filter(f).reduce((a, l) => a + l.ead, 0);
+  const highRisk = sumEad((l) => isPhys(l) || isTrans(l));
+  const highRiskParts = { physicalOnly: sumEad((l) => isPhys(l) && !isTrans(l)), transitionOnly: sumEad((l) => isTrans(l) && !isPhys(l)), both: sumEad((l) => isPhys(l) && isTrans(l)), count: loans.filter((l) => isPhys(l) || isTrans(l)).length };
   const runs = STRESS_VIEW.map((v) => ({ ...v, run: runCredit(loans, { scenario: v.scenario, horizon: 2050, approach: 'bottom-up' }) }));
   const base = runs[0].run;
   const worst = runs.reduce((a, b) => (b.run.summary.eclStressed > a.run.summary.eclStressed ? b : a));
   return {
-    ead, highRisk, sectors,
+    ead, highRisk, highRiskParts, sectors, loans: loans.length,
+    scenarios: runs.map((x) => ({ key: x.scenario, label: x.label, note: x.note, ecl: x.run.summary.ecl, eclStressed: x.run.summary.eclStressed, ...x.run.capital })),
+    worstKey: worst.scenario,
+    eclByStage: [1, 2, 3].map((st) => base.results.filter((r) => r.stage === st).reduce((a, r) => a + r.ecl, 0)),
     eclBase: base.summary.ecl,
     eclStressed: worst.run.summary.eclStressed,
     worstLabel: `${worst.note} · 2050`,
-    car: [{ label: 'Baseline', note: 'before climate stress', value: base.capital.carBefore }, ...runs.map((x) => ({ label: x.label, note: `${x.note} · 2050`, value: x.run.capital.carAfter }))],
+    car: [{ label: 'Baseline', note: 'before climate stress', value: base.capital.carBefore, href: '/methodology#capital' }, ...runs.map((x) => ({ label: x.label, note: `${x.note} · 2050`, value: x.run.capital.carAfter, href: `/compare?scenario=${x.scenario}&horizon=2050` }))],
     minimum: BANK.carMinimum,
   };
 }

@@ -3,18 +3,19 @@ import { activeLoans, currentUser, db } from '@/lib/store';
 import { MyWork } from '@/components/my-work';
 import { scenarioOf } from '@/lib/params';
 import { Badge, Card, Table } from '@/components/ui';
-import { ghs, pct, when } from '@/lib/fmt';
+import { ghs, pct, s5, when } from '@/lib/fmt';
 import { dashboard, Level } from '@/lib/dashboard';
 
 export const dynamic = 'force-dynamic';
 
 const HEAT: Record<Level, string> = { High: 'bg-[#ebb5ae] text-[#5b1f17]', Med: 'bg-[#f7dfa0] text-[#5a4300]', Low: 'bg-[#dce9d5] text-[#24421b]' };
-const Kpi = ({ label, value, sub }: { label: string; value: string; sub: string }) => (
-  <div className="rounded-xl border border-zinc-200 bg-white p-5">
+const Kpi = ({ label, value, sub, href }: { label: string; value: string; sub: string; href: string }) => (
+  <Link href={href} className="group block rounded-xl border border-zinc-200 bg-white p-5 transition hover:border-[#5a8a3c] hover:shadow-sm">
     <p className="text-[15px] text-zinc-500">{label}</p>
     <p className="mt-2 text-3xl font-semibold tabular-nums text-zinc-900">{value}</p>
     <p className="mt-1 text-xs text-zinc-500">{sub}</p>
-  </div>
+    <p className="mt-2 text-xs font-medium text-[#3a5a45] opacity-70 group-hover:opacity-100">How this is calculated →</p>
+  </Link>
 );
 
 const ENGINES: [string, string, string[][]][] = [
@@ -44,22 +45,24 @@ export default async function Overview() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Kpi label="Portfolio exposure" value={ghs(ead)} sub={`${loans.length} facilities · ${dataset.id}`} />
-        <Kpi label="High-risk exposure" value={pct(D.highRisk / ead)} sub={`${ghs(D.highRisk)} · physical score ≥ 3.0 of 5, or high-transition sector without a plan`} />
-        <Kpi label="Baseline ECL" value={ghs(D.eclBase)} sub="IFRS 9 provisions before climate stress" />
-        <Kpi label="Stressed ECL" value={ghs(D.eclStressed)} sub={`most severe: ${D.worstLabel}`} />
+        <Kpi href="/methodology#exposure" label="Portfolio exposure" value={ghs(ead)} sub={`${loans.length} facilities · ${dataset.id}`} />
+        <Kpi href="/methodology#high-risk" label="High-risk exposure" value={pct(D.highRisk / ead)} sub={`${ghs(D.highRisk)} · physical score ≥ 3.0 of 5, or high-transition sector without a plan`} />
+        <Kpi href="/methodology#baseline-ecl" label="Baseline ECL" value={ghs(D.eclBase)} sub="one-year ECL from the bank’s own PD and LGD, before climate stress" />
+        <Kpi href="/methodology#stressed-ecl" label="Stressed ECL" value={ghs(D.eclStressed)} sub={`most severe: ${D.worstLabel}`} />
       </div>
 
       <section className="mt-6 rounded-xl border border-zinc-200 bg-white p-6">
-        <h2 className="text-2xl font-semibold tracking-tight">Sector climate risk heatmap</h2>
+        <div className="flex items-baseline justify-between gap-3"><h2 className="text-2xl font-semibold tracking-tight">Sector climate risk heatmap</h2><Link href="/methodology#heatmap" className="text-sm text-[#3a5a45] hover:underline">How the levels are set →</Link></div>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[560px] border-separate border-spacing-x-2 border-spacing-y-1.5 text-[15px]">
             <thead><tr className="text-left">{['Sector', 'Physical', 'Transition', 'Overall'].map((h) => <th key={h} className="px-2 pb-1 font-semibold">{h}</th>)}<th className="px-2 pb-1 text-right font-semibold">EAD</th></tr></thead>
             <tbody>
               {D.sectors.map((s) => (
                 <tr key={s.name}>
-                  <td className="px-2">{s.name}</td>
-                  {[s.physical, s.transition, s.overall].map((l, i) => <td key={i} className={`rounded-md px-2 py-2 text-center ${HEAT[l]}`}>{l}</td>)}
+                  <td className="px-2"><Link href="/methodology#heatmap" className="hover:underline">{s.name}</Link></td>
+                  {([[s.physical, '/physical', `physical score ${s5(s.physScore)} of 5`], [s.transition, '/transition', `transition sensitivity ${s5(s.transScore)} of 5`], [s.overall, '/methodology#heatmap', 'the higher of the two']] as const).map(([l, href, tip], i) => (
+                    <td key={i} className={`rounded-md p-0 text-center ${HEAT[l]}`}><Link href={href} title={tip} className="block px-2 py-2 hover:underline">{l}</Link></td>
+                  ))}
                   <td className="px-2 text-right tabular-nums text-zinc-500">{ghs(s.ead)}</td>
                 </tr>
               ))}
@@ -70,20 +73,20 @@ export default async function Overview() {
 
         <hr className="my-6 border-zinc-200" />
 
-        <h2 className="text-2xl font-semibold tracking-tight">Capital adequacy under climate stress</h2>
+        <div className="flex items-baseline justify-between gap-3"><h2 className="text-2xl font-semibold tracking-tight">Capital adequacy under climate stress</h2><Link href="/methodology#capital" className="text-sm text-[#3a5a45] hover:underline">How this is calculated →</Link></div>
         <div className="mt-5 space-y-4">
           {D.car.map((c) => (
-            <div key={c.label} className="grid grid-cols-[7.5rem_1fr_4rem] items-center gap-4">
+            <Link key={c.label} href={c.href} className="grid grid-cols-[7.5rem_1fr_4rem] items-center gap-4 rounded-md p-1 hover:bg-zinc-50">
               <div><p className="text-[15px]">{c.label}</p><p className="text-xs text-zinc-500">{c.note}</p></div>
               <div className="relative h-3 rounded-full bg-zinc-100">
                 <div className={`h-3 rounded-full ${c.value < D.minimum ? 'bg-[#d9534f]' : 'bg-[#5a8a3c]'}`} style={{ width: `${Math.max(0, c.value) / carMax * 100}%` }} />
                 <div className="absolute -top-1 h-5 w-0.5 bg-zinc-700" style={{ left: `${D.minimum / carMax * 100}%` }} title="minimum" />
               </div>
               <p className={`text-right text-[15px] tabular-nums ${c.value < D.minimum ? 'font-semibold text-red-600' : ''}`}>{pct(c.value)}</p>
-            </div>
+            </Link>
           ))}
         </div>
-        <p className="mt-3 text-xs text-zinc-500">Total capital ratio at 2050, bottom-up. The black line marks the {pct(D.minimum, 0)} minimum (configurable). Red means below the minimum.</p>
+        <p className="mt-3 text-xs text-zinc-500">Total capital ratio at 2050, bottom-up. The black line marks the {pct(D.minimum, 0)} minimum (configurable). Red means below the minimum. Click a scenario to see top-down and bottom-up side by side.</p>
       </section>
 
       <div className="mt-6"><MyWork user={user} runs={d.runs} audit={d.audit} /></div>

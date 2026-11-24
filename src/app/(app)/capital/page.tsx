@@ -20,10 +20,10 @@ export default async function CapitalPage({ searchParams }: { searchParams: Prom
     <>
       <PageHead area="Engine III · ICAAP & ILAAP integration" title="Capital and liquidity adequacy" intro={`Climate stress results flow into the capital and liquidity assessments. Showing ${rec.id}: ${scenarioOf(rec.input.scenario).name}, ${rec.input.horizon}.`} />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Total capital ratio" value={`${pct(C.carBefore)} → ${pct(C.carAfter)}`} sub={pp(C.carAfter - C.carBefore)} tone={C.carAfter < C.minimum ? 'bad' : 'good'} />
-        <Stat label="CET1 ratio" value={`${pct(C.cet1Before)} → ${pct(C.cet1After)}`} />
-        <Stat label="Headroom to minimum" value={pct(C.carAfter - C.minimum)} sub={`minimum ${pct(C.minimum, 0)} · configurable`} tone={C.carAfter < C.minimum ? 'bad' : 'good'} />
-        <Stat label="Capital shortfall" value={C.carAfter < C.minimum ? ghs(C.minimum * C.rwaAfter - C.capitalAfter) : 'None'} sub="to restore the minimum" tone={C.carAfter < C.minimum ? 'bad' : 'good'} />
+        <Stat href="/methodology#capital" label="Total capital ratio" value={`${pct(C.carBefore)} → ${pct(C.carAfter)}`} sub={pp(C.carAfter - C.carBefore)} tone={C.carAfter < C.minimum ? 'bad' : 'good'} />
+        <Stat href="/methodology#capital" label="CET1 ratio" value={`${pct(C.cet1Before)} → ${pct(C.cet1After)}`} />
+        <Stat href="/methodology#capital" label="Headroom to minimum" value={pct(C.carAfter - C.minimum)} sub={`minimum ${pct(C.minimum, 0)} · configurable`} tone={C.carAfter < C.minimum ? 'bad' : 'good'} />
+        <Stat href="/methodology#capital" label="Capital shortfall" value={C.carAfter < C.minimum ? ghs(C.minimum * C.rwaAfter - C.capitalAfter) : 'None'} sub="to restore the minimum" tone={C.carAfter < C.minimum ? 'bad' : 'good'} />
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card title="ICAAP: capital bridge">

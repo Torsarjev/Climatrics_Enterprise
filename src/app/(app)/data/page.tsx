@@ -29,10 +29,10 @@ export default async function DataPage() {
       </Card>
 
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Rows read" value={String(c.rowsRead)} sub={ghs(c.eadRead)} />
-        <Stat label="Accepted" value={String(c.rowsAccepted)} sub={ghs(c.eadAccepted)} tone="good" />
+        <Stat href="/methodology#exposure" label="Rows read" value={String(c.rowsRead)} sub={ghs(c.eadRead)} />
+        <Stat href="/methodology#exposure" label="Accepted" value={String(c.rowsAccepted)} sub={ghs(c.eadAccepted)} tone="good" />
         <Stat label="Rejected to exception queue" value={String(c.rowsRejected)} sub={ghs(c.eadRejected)} tone={c.rowsRejected ? 'bad' : undefined} />
-        <Stat label="Reconciliation" value={c.reconciled ? 'Balanced ✓' : 'Break ✕'} sub="read = accepted + rejected (rows and GHS)" tone={c.reconciled ? 'good' : 'bad'} />
+        <Stat href="/methodology#exposure" label="Reconciliation" value={c.reconciled ? 'Balanced ✓' : 'Break ✕'} sub="read = accepted + rejected (rows and GHS)" tone={c.reconciled ? 'good' : 'bad'} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">

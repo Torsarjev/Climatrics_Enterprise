@@ -35,14 +35,14 @@ export default async function RunPage({ params, searchParams }: { params: Promis
       </PageHead>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="One-year ECL (simplified)" value={`${ghs(S.ecl)} → ${ghs(S.eclStressed)}`} sub={`${delta(S.ecl, S.eclStressed)} · +${ghs(S.eclStressed - S.ecl)} provisions`} tone="bad" />
-        <Stat label="Weighted PD (performing)" value={`${pct(S.pd, 2)} → ${pct(S.pdStressed, 2)}`} sub={pp(S.pdStressed - S.pd, 2)} tone="warn" />
-        <Stat label="Weighted LGD" value={`${pct(S.lgd)} → ${pct(S.lgdStressed)}`} sub="lost recovery on flood-damaged collateral" tone="warn" />
-        <Stat label="Capital adequacy ratio" value={`${pct(C.carBefore)} → ${pct(C.carAfter)}`} sub={`minimum ${pct(C.minimum, 0)} (configurable)`} tone={C.carAfter < C.minimum ? 'bad' : 'good'} />
-        <Stat label="Credit VaR 99.9% (1y)" value={`${ghs(L.base.var999)} → ${ghs(L.stressed.var999)}`} sub={`CVaR ${ghs(L.stressed.cvar999)}`} />
-        <Stat label="Economic capital" value={`${ghs(L.base.economicCapital)} → ${ghs(L.stressed.economicCapital)}`} sub="VaR 99.9 − expected loss" />
-        <Stat label="Stage 2 + 3 exposure" value={`${pct((S.stages[1].before + S.stages[2].before) / S.ead)} → ${pct((S.stages[1].after + S.stages[2].after) / S.ead)}`} sub="significant increase in credit risk" tone="warn" />
-        <Stat label="Liquidity coverage" value={`${pct(Q.lcrBefore, 0)} → ${pct(Q.lcrAfter, 0)}`} sub={`minimum ${pct(Q.minimum, 0)}`} tone={Q.lcrAfter < Q.minimum ? 'bad' : 'good'} />
+        <Stat href="/methodology#stressed-ecl" label="One-year ECL (simplified)" value={`${ghs(S.ecl)} → ${ghs(S.eclStressed)}`} sub={`${delta(S.ecl, S.eclStressed)} · +${ghs(S.eclStressed - S.ecl)} provisions`} tone="bad" />
+        <Stat href="/methodology#stressed-ecl" label="Weighted PD (performing)" value={`${pct(S.pd, 2)} → ${pct(S.pdStressed, 2)}`} sub={pp(S.pdStressed - S.pd, 2)} tone="warn" />
+        <Stat href="/methodology#stressed-ecl" label="Weighted LGD" value={`${pct(S.lgd)} → ${pct(S.lgdStressed)}`} sub="lost recovery on flood-damaged collateral" tone="warn" />
+        <Stat href="/methodology#capital" label="Capital adequacy ratio" value={`${pct(C.carBefore)} → ${pct(C.carAfter)}`} sub={`minimum ${pct(C.minimum, 0)} (configurable)`} tone={C.carAfter < C.minimum ? 'bad' : 'good'} />
+        <Stat href="/methodology#loss" label="Credit VaR 99.9% (1y)" value={`${ghs(L.base.var999)} → ${ghs(L.stressed.var999)}`} sub={`CVaR ${ghs(L.stressed.cvar999)}`} />
+        <Stat href="/methodology#loss" label="Economic capital" value={`${ghs(L.base.economicCapital)} → ${ghs(L.stressed.economicCapital)}`} sub="VaR 99.9 − expected loss" />
+        <Stat href="/methodology#baseline-ecl" label="Stage 2 + 3 exposure" value={`${pct((S.stages[1].before + S.stages[2].before) / S.ead)} → ${pct((S.stages[1].after + S.stages[2].after) / S.ead)}`} sub="significant increase in credit risk" tone="warn" />
+        <Stat href="/methodology#liquidity" label="Liquidity coverage" value={`${pct(Q.lcrBefore, 0)} → ${pct(Q.lcrAfter, 0)}`} sub={`minimum ${pct(Q.minimum, 0)}`} tone={Q.lcrAfter < Q.minimum ? 'bad' : 'good'} />
       </div>
 
       <Card title="Ghana-calibrated shocks used in this run" className="mt-6" note={<Link href={`/calibration?scenario=${rec.input.scenario}`} className="underline">calibration method</Link>}>

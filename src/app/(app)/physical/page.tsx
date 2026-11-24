@@ -33,7 +33,7 @@ export default async function PhysicalPage() {
     <>
       <PageHead area="Engine II · Physical risk" title="Physical risk" intro="Each facility's collateral location is overlaid on hazard layers. Hazard intensity × sector and collateral vulnerability gives a physical risk score from 1 (low) to 5 (very high), today and under each scenario." />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="EAD with high physical risk (≥ 3.0 of 5)" value={pct(highEad / ead)} sub={ghs(highEad)} tone="warn" />
+        <Stat href="/methodology#high-risk" label="EAD with high physical risk (≥ 3.0 of 5)" value={pct(highEad / ead)} sub={ghs(highEad)} tone="warn" />
         <Stat label="Facilities scored" value={String(scored.length)} sub="4 hazards each" />
         <Stat label="Lower-confidence locations" value={pct(lowConf / ead)} sub="address or region only" />
         <Stat label="Hazard data" value="4 layers" sub="flood · drought · heat · coastal" />

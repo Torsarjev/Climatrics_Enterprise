@@ -21,6 +21,7 @@ const NAV = [
   ['/disclosure', 'IFRS S2 disclosure', 'disclosure'],
   ['/reports', 'Regulatory reports', 'reports'],
   ['/governance', 'Model governance', 'governance'],
+  ['/methodology', 'Methodology', 'disclosure'],
   ['/architecture', 'Architecture', 'architecture'],
 ];
 

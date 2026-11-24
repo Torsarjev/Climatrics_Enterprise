@@ -27,15 +27,19 @@ export function Card({ title, note, children, className = '' }: { title?: string
   );
 }
 
-export function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'bad' | 'good' | 'warn' }) {
+export function Stat({ label, value, sub, tone, href }: { label: string; value: string; sub?: string; tone?: 'bad' | 'good' | 'warn'; href?: string }) {
   const c = tone === 'bad' ? 'text-red-600' : tone === 'good' ? 'text-emerald-700' : tone === 'warn' ? 'text-amber-600' : 'text-zinc-900';
-  return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4">
+  const body = (
+    <>
       <p className="text-xs text-zinc-500">{label}</p>
       <p className={`mt-1 text-xl font-semibold tabular-nums ${c}`}>{value}</p>
       {sub && <p className="mt-0.5 text-xs text-zinc-500">{sub}</p>}
-    </div>
+      {href && <p className="mt-1.5 text-[11px] font-medium text-[#3a5a45] opacity-70 group-hover:opacity-100">How this is calculated →</p>}
+    </>
   );
+  return href
+    ? <Link href={href} className="group block rounded-lg border border-zinc-200 bg-white p-4 transition hover:border-[#5a8a3c] hover:shadow-sm">{body}</Link>
+    : <div className="rounded-lg border border-zinc-200 bg-white p-4">{body}</div>;
 }
 
 export function Bars({ rows, format, max, color = 'bg-emerald-600', second }: { rows: { label: string; value: number; value2?: number }[]; format: (n: number) => string; max?: number; color?: string; second?: string }) {
