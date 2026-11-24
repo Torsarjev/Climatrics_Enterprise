@@ -14,7 +14,12 @@ const timed = async <T,>(label: string, f: () => Promise<T>) => {
 };
 
 export async function readText(key: string): Promise<string | null> {
-  if (onNetlify) return timed(`get ${key}`, async () => (await blobs().get(key, { type: 'text' })) ?? null);
+  if (onNetlify) return timed(`get ${key}`, async () => {
+    const store = blobs();
+    // get() on a missing key hangs in this runtime; getMetadata() answers null straight away
+    if (!(await store.getMetadata(key))) return null;
+    return (await store.get(key, { type: 'text' })) ?? null;
+  });
   const f = path.join(dir, key);
   return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null;
 }
