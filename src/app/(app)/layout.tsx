@@ -6,6 +6,7 @@ import { NavLinks } from '@/components/nav-links';
 
 
 const NAV = [
+  ['/demo', 'Demo walkthrough', 'reports'],
   ['/', 'Executive dashboard', 'dashboard'],
   ['/board', 'Board & management', 'board'],
   ['/data', 'Data ingestion', 'data'],

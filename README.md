@@ -10,8 +10,9 @@ A working prototype for the GCB Bank technical demo. All data is synthetic ("Dem
 
 ```bash
 nvm use 24
-npm install
-npm run build && npx next start -p 3470   # open http://localhost:3470
+npm ci
+npm run demo:setup
+npm run build && npm start -- -p 3470   # open http://localhost:3470
 ```
 
 ## CI/CD
@@ -24,7 +25,7 @@ npm run build && npx next start -p 3470   # open http://localhost:3470
 
 ## Sign in
 
-Three demo accounts, one per role: `kofi.mensah@climatrics.demo` (analyst: loads data, runs tests), `ama.owusu@climatrics.demo` (approver) and `yaw.boateng@climatrics.demo` (auditor, read-only). The password is not in the code: set `DEMO_PASSWORD_KEY` in `.env.local` locally (quote it if it contains `#`) or in the host's environment variables, and `SESSION_SECRET_KEY` to fix the session-signing key (otherwise one is generated in `.data/`). Five wrong passwords lock an account for 15 minutes. SSO and MFA are planned for production, not built.
+Three demo accounts, one per role: `kofi.mensah@climatrics.demo` (analyst: loads data, runs tests), `ama.owusu@climatrics.demo` (approver) and `yaw.boateng@climatrics.demo` (auditor, read-only). The password is not in the code: set `DEMO_PASSWORD_KEY` in `.env.local` locally (quote it if it contains `#`) or in the host's environment variables, and `SESSION_SECRET_KEY` to fix the session-signing key (otherwise one is generated in `.data/`). Five wrong passwords lock an account for 15 minutes. Authenticator-app MFA is enabled by default. The local setup command creates an ignored `.env.local` with a generated password, a signing key and `MFA_MODE=off` for private rehearsal. Read `DEMO_PASSWORD_KEY` from that file to sign in. Remove `MFA_MODE=off` and restart to rehearse authenticator enrollment. Production SSO is planned.
 
 To reset the demo to a clean state (no runs, a fresh audit log), stop the server, delete `.data/` and start it again.
 
@@ -38,10 +39,12 @@ To reset the demo to a clean state (no runs, a fresh audit log), stop the server
 | `src/lib/engine.ts` | Physical and transition scores → stressed PD/LGD → IFRS 9 staging and ECL → Monte Carlo VaR/CVaR → ICAAP/ILAAP |
 | `src/lib/store.ts` | Datasets, runs, maker-checker, audit log, hashes and reproducibility (JSON file in `.data/`) |
 
-## Demo click-path (matches demo-plan.md)
+## Demo click-path
+
+Open **Demo walkthrough** from the sidebar for a guided flow with links to the active dataset and latest stress run.
 
 1. **Overview:** the workflow.
-2. **Data:** "Load and validate". Show 600 accepted, 5 rejected with reasons, totals reconciled, and the dataset hash.
+2. **Data:** "Load and validate". Show 1,000 accepted, 5 rejected with reasons, totals reconciled, and the dataset hash.
 3. **Portfolio:** exposure by sector, region, collateral and maturity, plus concentration.
 4. **Physical risk:** the map. Switch the hazard layers. Dashed outlines mark lower-confidence locations.
 5. **Transition risk:** sector sensitivity, readiness and the engagement watch-list.
