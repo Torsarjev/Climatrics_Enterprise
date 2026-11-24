@@ -16,11 +16,11 @@ npm run build && npx next start -p 3470   # open http://localhost:3470
 
 ## Deploy to Netlify
 
-`netlify.toml` builds with Node 24. On Netlify, data (datasets, runs, approvals, audit trail) is kept in Netlify Blobs; locally it is kept in `.data/`. Set these environment variables on the site: `SESSION_SECRET` (a long random string) and `DEMO_PASSWORD`.
+`netlify.toml` builds with Node 24. On Netlify, data (datasets, runs, approvals, audit trail) is kept in Netlify Blobs; locally it is kept in `.data/`. Set these environment variables on the site: `SESSION_SECRET_KEY` (a long random string) and `DEMO_PASSWORD_KEY`.
 
 ## Sign in
 
-Three demo accounts, one per role: `kofi.mensah@climatrics.demo` (analyst: loads data, runs tests), `ama.owusu@climatrics.demo` (approver) and `yaw.boateng@climatrics.demo` (auditor, read-only). The password is shared with the team; set `DEMO_PASSWORD` to change it, and `SESSION_SECRET` to fix the session-signing key (otherwise one is generated in `.data/`). Five wrong passwords lock an account for 15 minutes. SSO and MFA are planned for production, not built.
+Three demo accounts, one per role: `kofi.mensah@climatrics.demo` (analyst: loads data, runs tests), `ama.owusu@climatrics.demo` (approver) and `yaw.boateng@climatrics.demo` (auditor, read-only). The password is not in the code: set `DEMO_PASSWORD_KEY` in `.env.local` locally (quote it if it contains `#`) or in the host's environment variables, and `SESSION_SECRET_KEY` to fix the session-signing key (otherwise one is generated in `.data/`). Five wrong passwords lock an account for 15 minutes. SSO and MFA are planned for production, not built.
 
 To reset the demo to a clean state (no runs, a fresh audit log), stop the server, delete `.data/` and start it again.
 

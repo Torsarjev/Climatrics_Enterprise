@@ -15,12 +15,13 @@ export const ACCOUNTS = [
   { id: 'yaw', email: 'yaw.boateng@climatrics.demo' },
 ] as const;
 
-export const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? 'Climatrics#2026';
+export const DEMO_PASSWORD = process.env.DEMO_PASSWORD_KEY ?? '';
+export const authConfigured = DEMO_PASSWORD.length >= 8;
 
 const dir = path.join(process.cwd(), '.data');
 function secret() {
-  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
-  if (onNetlify) return crypto.createHash('sha256').update(`climatrics-session:${DEMO_PASSWORD}`).digest('hex');
+  if (process.env.SESSION_SECRET_KEY) return process.env.SESSION_SECRET_KEY;
+  if (onNetlify) throw new Error('SESSION_SECRET_KEY is not set');
   const f = path.join(dir, 'session.key');
   if (!fs.existsSync(f)) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(f, crypto.randomBytes(32).toString('hex'), { mode: 0o600 }); }
   return fs.readFileSync(f, 'utf8');
@@ -32,7 +33,7 @@ const hashes = new Map(ACCOUNTS.map((a) => [a.email, crypto.scryptSync(DEMO_PASS
 export function checkPassword(email: string, password: string) {
   const account = ACCOUNTS.find((a) => a.email === email.trim().toLowerCase());
   const given = crypto.scryptSync(password, salt, 32);
-  const ok = !!account && crypto.timingSafeEqual(given, hashes.get(account.email)!);
+  const ok = authConfigured && !!account && crypto.timingSafeEqual(given, hashes.get(account.email)!);
   return ok ? account : null;
 }
 

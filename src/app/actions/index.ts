@@ -4,7 +4,7 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { USERS, audit, createRun, ingest, recordScreening, reproduce, review, sessionUser } from '@/lib/store';
-import { SESSION_COOKIE, checkPassword, clearFails, createSession, lockedFor, recordFail } from '@/lib/auth';
+import { SESSION_COOKIE, authConfigured, checkPassword, clearFails, createSession, lockedFor, recordFail } from '@/lib/auth';
 import { demoExtract } from '@/lib/portfolio';
 import type { Horizon, ScenarioKey, SectorKey } from '@/lib/params';
 import type { Approach } from '@/lib/engine';
@@ -12,6 +12,7 @@ import type { Approach } from '@/lib/engine';
 export async function loginAction(_: unknown, form: FormData) {
   const email = String(form.get('email') ?? '').trim().toLowerCase();
   const password = String(form.get('password') ?? '');
+  if (!authConfigured) return { error: 'Sign-in is not configured on this server: set DEMO_PASSWORD_KEY (8+ characters).' };
   if (!email || !password) return { error: 'Enter your email and password.' };
   const locked = lockedFor(email);
   if (locked) {
