@@ -14,6 +14,10 @@ npm install
 npm run build && npx next start -p 3470   # open http://localhost:3470
 ```
 
+## CI/CD
+
+`.github/workflows/ci-cd.yml` runs on every push and pull request to `main`: install, lint, type-check and build. When that passes on `main`, it deploys to Netlify production with the Netlify CLI. The deploy needs two repository secrets (Settings → Secrets and variables → Actions): `NETLIFY_AUTH_TOKEN` (Netlify → User settings → Applications → Personal access tokens) and `NETLIFY_SITE_ID` (Netlify → Project configuration → General → Project ID). Without them the deploy step is skipped with a warning and CI still runs. If Netlify's own Git builds are also on, turn them off (Project configuration → Build & deploy → Stop builds) so each push deploys once.
+
 ## Deploy to Netlify
 
 `netlify.toml` builds with Node 24. On Netlify, data (datasets, runs, approvals, audit trail) is kept in Netlify Blobs; locally it is kept in `.data/`. Set these environment variables on the site: `SESSION_SECRET_KEY` (a long random string) and `DEMO_PASSWORD_KEY`.
