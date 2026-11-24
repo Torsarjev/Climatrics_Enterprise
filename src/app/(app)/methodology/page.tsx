@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { activeLoans } from '@/lib/store';
 import { dashboard } from '@/lib/dashboard';
-import { BANK, LOSS_DIST, TRANSMISSION } from '@/lib/params';
+import { BANK, COLLATERAL, LOSS_DIST, SECTORS, TRANSMISSION } from '@/lib/params';
 import { CALIBRATION_VERSION, NGFS_RELEASE } from '@/lib/calibration';
 import { PageHead, Table } from '@/components/ui';
 import { ghs, pct } from '@/lib/fmt';
@@ -26,12 +26,23 @@ export default async function MethodologyPage() {
   const base = D.scenarios[0];
   const worst = D.scenarios.find((s) => s.key === D.worstKey)!;
   const loanRwa = base.rwaBefore - BANK.otherRwa;
+  const perf = loans.filter((l) => l.pd < 1);
+  const perfEad = perf.reduce((a, l) => a + l.ead, 0);
+  const wPd = perf.reduce((a, l) => a + l.pd * l.ead, 0) / perfEad;
+  const covered = loans.reduce((a, l) => a + Math.min(l.collateralValue, l.ead), 0);
+  const collRows = Object.entries(COLLATERAL).map(([k, c]) => {
+    const xs = loans.filter((l) => l.collateralType === k);
+    return { name: c.name, ead: xs.reduce((a, l) => a + l.ead, 0), value: xs.reduce((a, l) => a + l.collateralValue, 0), covered: xs.reduce((a, l) => a + Math.min(l.collateralValue, l.ead), 0) };
+  }).filter((r) => r.ead > 0).sort((a, b) => b.ead - a.ead);
+  const top10 = [...loans].sort((a, b) => b.ead - a.ead).slice(0, 10);
+  const top10Ead = top10.reduce((a, l) => a + l.ead, 0);
+  const sectorName = (k: string) => SECTORS.find((x) => x.key === k)!.name;
 
   return (
     <>
       <PageHead area="How the numbers are produced" title="Methodology" intro="Each headline figure on the dashboard, with its formula, the inputs that produced it and links to the detailed screens. Every value on this page is computed live from the active dataset." />
       <nav className="flex flex-wrap gap-2 text-sm">
-        {[['exposure', 'Portfolio exposure'], ['high-risk', 'High-risk exposure'], ['baseline-ecl', 'Baseline ECL'], ['stressed-ecl', 'Stressed ECL'], ['heatmap', 'Sector heatmap'], ['capital', 'Capital adequacy'], ['loss', 'VaR and economic capital'], ['liquidity', 'Liquidity']].map(([id, t]) => (
+        {[['exposure', 'Portfolio exposure'], ['pd', 'Weighted PD'], ['collateral', 'Collateral cover'], ['concentration', 'Top-10 concentration'], ['high-risk', 'High-risk exposure'], ['baseline-ecl', 'Baseline ECL'], ['stressed-ecl', 'Stressed ECL'], ['heatmap', 'Sector heatmap'], ['capital', 'Capital adequacy'], ['loss', 'VaR and economic capital'], ['liquidity', 'Liquidity']].map(([id, t]) => (
           <a key={id} href={`#${id}`} className="rounded-md px-2.5 py-1 ring-1 ring-zinc-300 hover:bg-zinc-100">{t}</a>
         ))}
       </nav>
@@ -46,6 +57,35 @@ export default async function MethodologyPage() {
           ['Dataset version and fingerprint', `${dataset.id} · SHA-256 ${dataset.hash.slice(0, 16)}…`],
         ]} />
         <Links items={[['/data', 'Validation and exception queue'], ['/portfolio', 'Exposure by sector, region, collateral and maturity']]} />
+      </Section>
+
+      <Section id="pd" title={`Weighted PD (performing): ${pct(wPd, 2)}`}>
+        <Formula>Weighted PD = Σ (PD × EAD) ÷ Σ EAD, over performing facilities only (defaulted facilities, PD = 100%, are excluded)</Formula>
+        <Table head={['Step', 'Value']} align={['l', 'r']} rows={[
+          ['Performing facilities', `${perf.length} · ${ghs(perfEad)}`],
+          ['Defaulted facilities excluded', `${loans.length - perf.length} · ${ghs(D.ead - perfEad)}`],
+          ['Σ PD × EAD (expected defaults in cedis)', ghs(perf.reduce((a, l) => a + l.pd * l.ead, 0))],
+          [<b key="w">Weighted PD</b>, <b key="v">{pct(wPd, 2)}</b>],
+        ]} />
+        <p>PD is the bank’s own one-year probability of default from its rating model, taken from the loan extract unchanged.</p>
+        <Links items={[['/portfolio', 'Facilities and PD by sector']]} />
+      </Section>
+
+      <Section id="collateral" title={`Collateral cover: ${pct(covered / D.ead, 0)}`}>
+        <Formula>Collateral cover = Σ min(collateral value, EAD) ÷ Σ EAD (collateral above the exposure is not counted)</Formula>
+        <Table head={['Collateral type', 'Exposure', 'Collateral value', 'Counted (capped at exposure)', 'Cover']} align={['l', 'r', 'r', 'r', 'r']}
+          rows={[...collRows.map((r) => [r.name, ghs(r.ead), ghs(r.value), ghs(r.covered), pct(r.covered / r.ead, 0)]),
+            [<b key="t">Total</b>, <b key="e">{ghs(D.ead)}</b>, '', <b key="c">{ghs(covered)}</b>, <b key="p">{pct(covered / D.ead, 0)}</b>]]} />
+        <p>Collateral values come from the loan extract. Under climate stress, flood damage reduces the recoverable value (see Stressed ECL).</p>
+        <Links items={[['/physical', 'Collateral in high-hazard locations']]} />
+      </Section>
+
+      <Section id="concentration" title={`Top-10 concentration: ${pct(top10Ead / D.ead)} (${ghs(top10Ead)})`}>
+        <Formula>Top-10 concentration = EAD of the 10 largest facilities ÷ total EAD</Formula>
+        <Table head={['#', 'Facility', 'Borrower', 'Sector', 'EAD', 'Share of book']} align={['l', 'l', 'l', 'l', 'r', 'r']}
+          rows={[...top10.map((l, i) => [i + 1, <span key="i" className="font-mono text-xs">{l.id}</span>, l.borrower, sectorName(l.sector), ghs(l.ead), pct(l.ead / D.ead, 2)]),
+            ['', '', <b key="t">Top 10</b>, '', <b key="e">{ghs(top10Ead)}</b>, <b key="p">{pct(top10Ead / D.ead)}</b>]]} />
+        <Links items={[['/portfolio', 'Largest exposures']]} />
       </Section>
 
       <Section id="high-risk" title={`High-risk exposure: ${pct(D.highRisk / D.ead)} (${ghs(D.highRisk)})`}>

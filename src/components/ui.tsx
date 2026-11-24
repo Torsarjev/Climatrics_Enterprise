@@ -47,13 +47,13 @@ export function Bars({ rows, format, max, color = 'bg-emerald-600', second }: { 
   return (
     <div className="space-y-2">
       {rows.map((r) => (
-        <div key={r.label} className="grid grid-cols-[9.5rem_1fr_6.5rem] items-center gap-3 text-sm">
+        <div key={r.label} className="grid grid-cols-[9.5rem_1fr_minmax(6.5rem,auto)] items-center gap-3 text-sm">
           <span className="truncate text-zinc-700">{r.label}</span>
           <div className="space-y-0.5">
             <div className="h-2.5 rounded-sm bg-zinc-100"><div className={`h-2.5 rounded-sm ${color}`} style={{ width: `${(r.value / m) * 100}%` }} /></div>
             {r.value2 != null && <div className="h-2.5 rounded-sm bg-zinc-100"><div className={`h-2.5 rounded-sm ${second ?? 'bg-red-500'}`} style={{ width: `${(r.value2 / m) * 100}%` }} /></div>}
           </div>
-          <span className="text-right tabular-nums text-zinc-700">{format(r.value2 ?? r.value)}</span>
+          <span className="whitespace-nowrap text-right tabular-nums text-zinc-700">{format(r.value2 ?? r.value)}</span>
         </div>
       ))}
     </div>

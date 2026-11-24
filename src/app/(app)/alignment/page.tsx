@@ -27,8 +27,8 @@ export default async function AlignmentPage() {
         <Stat label="In NDC priority sectors" value={pct(ndc.reduce((a, n) => a + n.value, 0) / ead)} />
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card title="Exposure by SDG" note="a facility can support several SDGs"><Bars rows={sdg} format={ghs} color="bg-emerald-600" /></Card>
-        <Card title="Exposure in Ghana NDC sectors"><Bars rows={ndc} format={ghs} color="bg-sky-600" /></Card>
+        <Card title="Exposure by SDG" note="a facility can support several SDGs"><Bars rows={sdg} format={(n) => `${ghs(n)} · ${pct(n / ead)}`} color="bg-emerald-600" /></Card>
+        <Card title="Exposure in Ghana NDC sectors"><Bars rows={ndc} format={(n) => `${ghs(n)} · ${pct(n / ead)}`} color="bg-sky-600" /></Card>
       </div>
       <Card title="Tagging rules" className="mt-6">
         <Table head={['Sector', 'SDGs', 'NDC sector', 'Taxonomy category']} rows={SECTORS.map((s) => [s.name, s.sdg.join(', '), s.ndc ?? '—', s.taxonomy === 'green' ? 'Green / aligned' : s.taxonomy === 'transition' ? 'Transition (eligible if plan and purpose qualify)' : 'Not eligible'])} />

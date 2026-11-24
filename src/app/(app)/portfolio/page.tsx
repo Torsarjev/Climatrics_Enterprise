@@ -23,24 +23,25 @@ export default async function PortfolioPage() {
   const top = [...loans].sort((a, b) => b.ead - a.ead).slice(0, 10);
   const top10 = top.reduce((a, l) => a + l.ead, 0);
   const secured = loans.reduce((a, l) => a + Math.min(l.collateralValue, l.ead), 0);
+  const share = (n: number) => `${pct(n / ead)} · ${ghs(n)}`;
   const wPd = loans.filter((l) => l.pd < 1).reduce((a, l) => a + l.pd * l.ead, 0) / loans.filter((l) => l.pd < 1).reduce((a, l) => a + l.ead, 0);
 
   return (
     <>
       <PageHead area="Area 1 · Portfolio mapping & tagging" title="Portfolio exposure" intro="The book is tagged by sector, geography, collateral and maturity. These tags drive every downstream climate assessment." />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Total EAD" value={ghs(ead)} sub={`${loans.length} facilities in ${REGIONS.length} regions`} />
-        <Stat label="Weighted PD (performing)" value={pct(wPd, 2)} sub="bank's own PD model" />
-        <Stat label="Collateral cover" value={pct(secured / ead, 0)} sub="capped at exposure" />
-        <Stat label="Top-10 concentration" value={pct(top10 / ead)} sub={ghs(top10)} tone="warn" />
+        <Stat href="/methodology#exposure" label="Total EAD" value={ghs(ead)} sub={`${loans.length} facilities in ${REGIONS.length} regions`} />
+        <Stat href="/methodology#pd" label="Weighted PD (performing)" value={pct(wPd, 2)} sub="bank's own PD model" />
+        <Stat href="/methodology#collateral" label="Collateral cover" value={pct(secured / ead, 0)} sub="capped at exposure" />
+        <Stat href="/methodology#concentration" label="Top-10 concentration" value={pct(top10 / ead)} sub={ghs(top10)} tone="warn" />
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card title="By sector"><Bars rows={bySector} format={(n) => pct(n / ead)} /></Card>
-        <Card title="By region"><Bars rows={byRegion} format={(n) => pct(n / ead)} /></Card>
-        <Card title="By collateral type"><Bars rows={byColl} format={(n) => pct(n / ead)} /></Card>
+        <Card title="By sector"><Bars rows={bySector} format={share} /></Card>
+        <Card title="By region"><Bars rows={byRegion} format={share} /></Card>
+        <Card title="By collateral type"><Bars rows={byColl} format={share} /></Card>
         <div className="space-y-6">
-          <Card title="By residual maturity"><Bars rows={byMat} format={(n) => pct(n / ead)} /></Card>
-          <Card title="By IFRS 9 stage"><Bars rows={byStage} format={(n) => ghs(n)} /></Card>
+          <Card title="By residual maturity"><Bars rows={byMat} format={share} /></Card>
+          <Card title="By IFRS 9 stage"><Bars rows={byStage} format={share} /></Card>
         </div>
       </div>
       <Card title="Largest exposures" className="mt-6">

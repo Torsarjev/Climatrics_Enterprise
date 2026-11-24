@@ -3,7 +3,7 @@ import { SECTORS, sectorOf } from '@/lib/params';
 import { transitionScore } from '@/lib/engine';
 import { financedBook } from '@/lib/emissions';
 import { Badge, Bars, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
-import { ghs, num, pct, s5 } from '@/lib/fmt';
+import { ghs, pct, s5 } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +39,7 @@ export default async function TransitionPage() {
         <Illustrative />
       </Card>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card title="Transition sensitivity by sector"><Bars rows={rows.map((r) => ({ label: r.s.name, value: r.s.transition }))} format={(n) => num(n)} max={1} color="bg-sky-600" /></Card>
+        <Card title="Transition sensitivity by sector" note="1 (low) to 5 (high)"><Bars rows={rows.map((r) => ({ label: r.s.name, value: 1 + 4 * r.s.transition }))} format={(n) => n.toFixed(1)} max={5} color="bg-sky-600" /></Card>
         <Card title="Engagement watch-list" note="carbon-intensive, no transition plan">
           <Table head={['Borrower', 'Sector', 'EAD', 'Intensity']} align={['l', 'l', 'r', 'r']} rows={watch.map((l) => [l.borrower, sectorOf(l.sector).name, ghs(l.ead), `${l.emissionsIntensity}`])} />
         </Card>

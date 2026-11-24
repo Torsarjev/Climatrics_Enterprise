@@ -41,7 +41,7 @@ export default async function EmissionsPage() {
           <Bars rows={bySector.map((x) => ({ label: x.s.name, value: x.fe }))} format={t} color="bg-zinc-700" />
         </Card>
         <Card title="Data quality" note="share of exposure by PCAF score">
-          <Bars rows={dqDist} format={(n) => pct(n)} color="bg-sky-600" />
+          <Bars rows={dqDist} format={(n) => `${pct(n)} · ${ghs(n * B.ead)}`} color="bg-sky-600" />
         </Card>
       </div>
 
