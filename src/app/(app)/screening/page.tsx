@@ -28,6 +28,7 @@ export default async function ScreeningPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <PageHead area="Engine I · Unified ESMS, NDC, taxonomy and SDG screening" title="Sustainability screening" intro="Capture borrower and transaction data once. Review separate results for ESMS, Ghana NDC, the Ghana Green Finance Taxonomy and the UN SDGs. The ESMS decision governs credit progression.">
+        <Btn href="/screening/review">Screening review queue</Btn>
         <Btn href="/screening/portfolio">Portfolio screening →</Btn>
       </PageHead>
 

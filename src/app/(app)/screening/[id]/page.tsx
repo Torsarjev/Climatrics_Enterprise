@@ -45,12 +45,21 @@ export default async function ScreenRunPage({ params }: { params: Promise<{ id: 
         <p className="mt-0.5 text-sm">Exclusion gate: <b>{R.esms.gate}</b> · ESMS risk: <b>{R.esms.tier}</b>. The ESMS decision governs credit progression.{R.esms.gate === 'excluded' && ' Review the framework results for diagnostic purposes.'}</p>
       </div>
 
-      <Card title="Management actions" className="mt-6">
+      <section id="review" className="mt-5 scroll-mt-4">
+        <Card title="Review and approval" note={<Link href="/screening/review" className="underline">Screening review queue</Link>}>
+          {rec.status === 'submitted' && <p className="mb-3 text-sm font-medium">Submitted by {rec.submittedBy ?? rec.by} · Awaiting independent review</p>}
+          <ScreenReview id={rec.id} status={rec.status} canRun={user.can.includes('run' as never)} canApprove={user.can.includes('approve' as never)} isMaker={rec.by === user.name || rec.submittedBy === user.name} provided={provided}
+            approvalBlock={!currentRules ? 'The analyst must re-screen under the current rules before approval.' : R.esms.gate !== 'pass' ? 'The exclusion gate must pass before approval. Escalate or return this assessment.' : undefined} />
+          {rec.reviewedBy && <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-600">Reviewed by {rec.reviewedBy} {rec.reviewedAt && `on ${when(rec.reviewedAt)}`}{rec.note ? ` · “${rec.note}”` : ''}</p>}
+        </Card>
+      </section>
+
+      <section id="management-actions" className="mt-6 scroll-mt-4"><Card title="Management actions">
         {R.actions.length ? <Table head={['Action', 'Suggested owner', 'Criteria']} rows={R.actions.map((action) => [
           action.text, action.owner, action.rules.map((id) => <a key={id} href={`#rule-${id}`} className="mr-2 font-mono text-xs underline">{id}</a>),
         ])} /> : <p className="text-sm text-zinc-600">No follow-up actions identified from the information supplied.</p>}
         {input.site && <p className="mt-3 text-sm text-zinc-600">Loan purpose {input.site.purpose || 'unknown'} · Site {input.site.latitude ?? 'unknown'}, {input.site.longitude ?? 'unknown'}</p>}
-      </Card>
+      </Card></section>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-4">
         <Card title="ESMS" note={rec.versions.ESMS}>
@@ -73,16 +82,14 @@ export default async function ScreenRunPage({ params }: { params: Promise<{ id: 
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_1fr]">
-        <Card title="Evidence" note="reviewers select verified items at approval">
+        <section id="evidence" className="scroll-mt-4"><Card title="Evidence" note="reviewers select verified items at approval">
           <Table head={['Evidence', 'Status', 'Reference', '']} rows={evidenceIds.map((k) => {
             const e = input.evidence[k] ?? { status: 'missing', ref: undefined, date: undefined };
             return [evidenceLabel(k), <Badge key="s" tone={e.status === 'verified' ? 'green' : e.status === 'provided' ? 'amber' : 'red'}>{e.status}</Badge>, <span key="r" className="font-mono text-xs">{e.ref ?? '—'}{e.date && <span className="block">{e.date}</span>}</span>,
               e.status !== 'verified' && user.can.includes('run' as never) ? <AttachEvidence key="a" id={rec.id} evidence={k} /> : ''];
           })} />
-        </Card>
-        <Card title="Review and approval" note="maker-checker">
-          <ScreenReview id={rec.id} status={rec.status} canRun={user.can.includes('run' as never)} canApprove={user.can.includes('approve' as never)} isMaker={rec.by === user.name || rec.submittedBy === user.name} provided={provided} />
-          {rec.reviewedBy && <p className="mt-3 text-sm text-zinc-600">Reviewed by {rec.reviewedBy} on {when(rec.reviewedAt!)}{rec.note ? `: “${rec.note}”` : ''}</p>}
+        </Card></section>
+        <Card title="Assessment history">
           <p className="mt-4 text-xs font-semibold uppercase text-zinc-500">Runs for this facility</p>
           <ul className="mt-1 text-sm">{history.map((h) => <li key={h.id}><Link href={`/screening/${h.id}`} className={`font-mono text-xs underline ${h.id === rec.id ? 'font-bold' : ''}`}>{h.id}</Link> · {h.status} · {when(h.createdAt)}</li>)}</ul>
           <p className="mt-3 text-xs text-zinc-500">Rules fingerprint {rec.rulesHash.slice(0, 16)}… · {Object.entries(rec.versions).map(([k, v]) => `${k} ${v}`).join(' · ')}</p>

@@ -12,6 +12,7 @@ const NAV = [
   ['/data', 'Data ingestion', 'data'],
   ['/portfolio', 'Portfolio management', 'portfolio'],
   ['/screening', 'Sustainability screening', 'screening'],
+  ['/screening/review', 'Screening review queue', 'governance'],
   ['/physical', 'Physical risk & GIS', 'physical'],
   ['/transition', 'Transition risk', 'transition'],
   ['/stress', 'Scenario analysis', 'stress'],
