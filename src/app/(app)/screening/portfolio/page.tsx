@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { currentUser, db } from '@/lib/store';
 import { currentPortfolioScreening, getPortfolioScreening } from '@/lib/esg/portfolio';
 import { portfolioScreenAction } from '@/app/actions';
-import { Bars, btnClass, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
+import { Bars, btnClass, Card, Illustrative, PageHead, Table } from '@/components/ui';
 import { ghs, pct, when } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +15,20 @@ export default async function PortfolioScreeningPage({ searchParams }: { searchP
   if (run_id && !snapshot) notFound();
   const P = snapshot?.report ?? await currentPortfolioScreening();
   const savedRuns = snapshot ? [] : (await db()).audit.filter((event) => event.action === 'screening.portfolio_saved').slice(0, 5);
-  const ratio = (n: number) => pct(P.ead ? n / P.ead : 0);
+  const fraction = (amount: number) => P.ead > 0 ? amount / P.ead : 0;
+  const ratio = (amount: number) => pct(fraction(amount));
+  const risk = [
+    { label: 'High risk', exposure: P.tier.High.ead, color: 'bg-red-700 text-white' },
+    { label: 'Medium risk', exposure: P.tier.Medium.ead, color: 'bg-amber-400 text-amber-950' },
+    { label: 'Low risk', exposure: P.tier.Low.ead, color: 'bg-green-700 text-white' },
+    { label: 'Unassessed', exposure: P.tier.Unassessed.ead, color: 'bg-slate-500 text-white' },
+  ];
+  const alignment = [
+    { label: 'SDG contribution', exposure: P.sdgTotal, color: 'bg-green-700' },
+    { label: 'Ghana NDC contribution', exposure: P.ndcTotal, color: 'bg-green-700' },
+    { label: 'Verified Green Taxonomy alignment', exposure: P.tax.aligned, color: 'bg-green-700' },
+    { label: 'Taxonomy pending evidence or approval', exposure: P.tax.pending, color: 'bg-amber-500' },
+  ];
   const share = (n: number) => `${ratio(n)} · ${ghs(n)}`;
   const rows = P.facilityResults.filter((row) => !action || row.actionCodes.includes(action));
   const pageSize = 25;
@@ -23,12 +36,13 @@ export default async function PortfolioScreeningPage({ searchParams }: { searchP
   const pageNumber = Math.max(1, Math.min(pageCount, Number.parseInt(page ?? '1', 10) || 1));
   const portfolioHref = (filter?: string, page?: number) => ({
     pathname: '/screening/portfolio',
+    hash: 'facility-drill-down',
     query: { ...(run_id ? { run_id } : {}), ...(filter ? { action: filter } : {}), ...(page ? { page } : {}) },
   });
   return (
     <>
-      <PageHead area="Engine I · Portfolio screening" title="Portfolio sustainability screening" intro={`All ${P.facilities.toLocaleString()} facilities screened with the same versioned rules. Facilities without an analyst screening use the data in the loan extract, so most sustainability answers are unknown and stay unknown. Aligned exposure counts only activities in approved screenings.`}>
-        <Link href="/screening" className="text-sm text-[#3a5a45] underline">← Screen a facility</Link>
+      <PageHead area="Engine I · Portfolio screening" title="Integrated portfolio screening dashboard" intro="Exposure, environmental and social risk, and sustainable finance results for the screened portfolio.">
+        <Link href="/screening" className="text-sm text-[#3a5a45] underline">Screen a facility</Link>
         {!snapshot && user.can.includes('run' as never) && <form action={portfolioScreenAction}><button className={btnClass}>Save portfolio screening</button></form>}
         {snapshot && <Link href="/screening/portfolio" className="text-sm underline">Open current portfolio</Link>}
       </PageHead>
@@ -38,11 +52,60 @@ export default async function PortfolioScreeningPage({ searchParams }: { searchP
       </details>}
       {snapshot && <p className="mb-4 rounded-lg bg-slate-100 p-3 text-sm">Saved by {snapshot.by} · {when(snapshot.createdAt)} · <span className="font-mono">{snapshot.id}</span></p>}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Taxonomy-aligned exposure" value={pct(P.alignedRatio, 2)} sub={`${ghs(P.tax.aligned)} of ${ghs(P.ead)} · approved activities only`} tone="good" />
-        <Stat label="Eligible, pending evidence or approval" value={ghs(P.tax.pending)} sub={ratio(P.tax.pending)} tone="warn" />
-        <Stat label="ESMS high risk" value={ratio(P.tier.High.ead)} sub={`${P.tier.High.n} facilities · ${ghs(P.tier.High.ead)}`} tone="bad" />
-        <Stat label="Exclusion-list hits" value={String(P.gate.excluded.n)} sub={`${P.gate.review.n} uncertain, sent to review`} />
+      <div className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-5 shadow-sm sm:px-7">
+        <dl className="grid gap-5 py-6 sm:grid-cols-2">
+          <div>
+            <dt className="text-slate-600">Facilities screened</dt>
+            <dd className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-slate-950">{P.facilities.toLocaleString('en-GB')}</dd>
+            <dd className="mt-1 text-sm text-slate-600">{P.screenedByAnalyst.toLocaleString('en-GB')} with an analyst assessment</dd>
+          </div>
+          <div>
+            <dt className="text-slate-600">Portfolio exposure</dt>
+            <dd className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-slate-950">{ghs(P.ead)}</dd>
+            <dd className="mt-1 text-sm text-slate-600">Total outstanding exposure</dd>
+          </div>
+        </dl>
+
+        <section aria-labelledby="esms-distribution" className="py-6">
+          <h2 id="esms-distribution" className="text-xl font-semibold text-slate-950">ESMS risk distribution by exposure</h2>
+          {P.ead > 0 ? (
+            <div aria-hidden="true" className="mt-4 flex h-11 overflow-hidden rounded-lg bg-slate-100">
+              {risk.filter(({ exposure }) => exposure > 0).map(({ label, exposure, color }) => (
+                <div key={label} className={`flex min-w-0 items-center justify-center overflow-hidden text-sm font-semibold tabular-nums ${color}`} style={{ width: `${fraction(exposure) * 100}%` }}>
+                  {fraction(exposure) >= 0.18 && ratio(exposure)}
+                </div>
+              ))}
+            </div>
+          ) : <p className="mt-3 text-sm text-slate-600">The screened portfolio has no outstanding exposure.</p>}
+          <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {risk.map(({ label, exposure, color }) => (
+              <li key={label} className="text-sm text-slate-600">
+                <span className="flex items-center gap-2 font-medium text-slate-900"><span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${color}`} />{label}</span>
+                <span className="mt-1 block pl-[1.125rem] tabular-nums">{ratio(exposure)} · {ghs(exposure)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 text-sm text-slate-600">Exclusion gate · {P.gate.excluded.n.toLocaleString('en-GB')} excluded · {P.gate.review.n.toLocaleString('en-GB')} require review</p>
+        </section>
+
+        <section aria-labelledby="sustainable-finance-alignment" className="py-6">
+          <h2 id="sustainable-finance-alignment" className="text-xl font-semibold text-slate-950">Sustainable finance alignment</h2>
+          <dl className="mt-4 space-y-4">
+            {alignment.map(({ label, exposure, color }) => (
+              <div key={label} className="grid gap-x-4 gap-y-1 sm:grid-cols-[1fr_auto]">
+                <dt className="font-medium text-slate-900">{label}</dt>
+                <dd className="whitespace-nowrap font-semibold tabular-nums text-slate-950">{ghs(exposure)}</dd>
+                <dd className="sm:col-span-2">
+                  <div aria-hidden="true" className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
+                    <div className={`h-full ${color}`} style={{ width: `${Math.min(1, fraction(exposure)) * 100}%` }} />
+                  </div>
+                  <p className="mt-1 text-sm tabular-nums text-slate-600">{ratio(exposure)} of total portfolio exposure</p>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-5 text-sm text-slate-600">SDG and NDC totals include potential and evidenced contributions. Frameworks can classify the same exposure, so summing these rows would double-count it.</p>
+        </section>
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1.6fr]">
@@ -56,7 +119,7 @@ export default async function PortfolioScreeningPage({ searchParams }: { searchP
         </Card>
       </div>
 
-      <Card title="Facility drill-down" className="mt-6" note={`${rows.length.toLocaleString()} facilities`}>
+      <section id="facility-drill-down" className="mt-6 scroll-mt-4"><Card title="Facility drill-down" note={`${rows.length.toLocaleString()} facilities`}>
         {action && <p className="mb-3 text-sm">{P.actions.find((item) => item.code === action)?.text ?? 'Action unavailable'} · <Link href={portfolioHref()} className="underline">Show all facilities</Link></p>}
         <Table head={['Facility', 'Borrower', 'Outstanding', 'Decision', 'Screening']} rows={rows.slice((pageNumber - 1) * pageSize, pageNumber * pageSize).map((row) => [
           row.facilityId, row.borrower, ghs(row.ead), row.decision,
@@ -68,7 +131,7 @@ export default async function PortfolioScreeningPage({ searchParams }: { searchP
           <span>Page {pageNumber} of {pageCount}</span>
           {pageNumber < pageCount && <Link href={portfolioHref(action, pageNumber + 1)} className="underline">Next</Link>}
         </nav>}
-      </Card>
+      </Card></section>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card title="Green Taxonomy (reported separately, never netted)">
