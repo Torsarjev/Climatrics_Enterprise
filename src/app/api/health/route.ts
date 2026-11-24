@@ -25,7 +25,23 @@ async function step<T,>(name: string, f: () => Promise<T>, out: Record<string, u
   catch (e) { out[name] = { ms: Date.now() - t, error: (e as Error).message.slice(0, 200) }; return null; }
 }
 
+async function variants() {
+  const out: Record<string, unknown> = {};
+  const demoS = getStore({ name: 'climatrics-demo', consistency: 'strong' });
+  const demoE = getStore({ name: 'climatrics-demo' });
+  const health = getStore({ name: 'climatrics-health', consistency: 'strong' });
+  await Promise.all([
+    step('demoList', async () => (await demoE.list()).blobs.map((b) => b.key), out).then((v) => { out.demoKeys = v; }),
+    step('demoMetaStrong', () => demoS.getMetadata('store.json'), out).then((v) => { out.demoMeta = v; }),
+    step('demoGetEventual', async () => ((await demoE.get('store.json', { type: 'text' })) ?? '').length, out).then((v) => { out.demoEventualBytes = v; }),
+    step('healthMissingStrong', () => health.get('no-such-key', { type: 'text' }), out),
+    step('demoMissingStrong', () => demoS.get('no-such-key', { type: 'text' }), out),
+  ]);
+  return out;
+}
+
 export async function GET(req: Request) {
+  if (new URL(req.url).searchParams.has('variants')) return Response.json(await variants(), { headers: { 'Cache-Control': 'no-store' } });
   if (new URL(req.url).searchParams.has('deep')) {
     const out: Record<string, unknown> = {};
     const raw = await step('readStore', () => readText('store.json'), out);
