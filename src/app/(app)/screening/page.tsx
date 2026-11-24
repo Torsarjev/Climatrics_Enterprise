@@ -1,86 +1,65 @@
-import { activeLoans, currentUser, db } from '@/lib/store';
-import { REGIONS, SECTORS, sectorOf } from '@/lib/params';
-import { EXCLUSIONS, ES_FLAGS, bookCategory } from '@/lib/screening';
-import { Badge, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
-import { ScreenForm } from '@/components/screen-form';
-import { ghs, pct, when, s5 } from '@/lib/fmt';
+import Link from 'next/link';
+import { activeLoans, currentUser, effectiveInput, screenRuns } from '@/lib/store';
+import { sectorOf } from '@/lib/params';
+import { FRAMEWORK_VERSIONS } from '@/lib/esg/rules';
+import { screen } from '@/lib/esg/engine';
+import { defaultInput, voltaPreset } from '@/lib/esg/portfolio';
+import { Badge, Btn, Card, Illustrative, PageHead, Table } from '@/components/ui';
+import { ScreenBuilder, type FacilityOption } from '@/components/screen-builder';
+import { ghs, when } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
-const tone = (d: string) => (d === 'Proceed' ? 'green' : d === 'Decline' ? 'red' : 'amber') as 'green' | 'red' | 'amber';
-const score = (n: number) => <span className={n >= 0.5 ? 'font-semibold text-red-600' : n >= 0.3 ? 'text-amber-700' : ''}>{s5(n)} / 5</span>;
+const STATUS_TONE = { draft: 'zinc', submitted: 'amber', approved: 'green', escalated: 'red', returned: 'amber' } as const;
 
 export default async function ScreeningPage() {
-  const d = await db();
   const user = await currentUser();
   const { loans } = await activeLoans();
-  const list = d.screenings ?? [];
-  const latest = list[0];
-  const ead = loans.reduce((a, l) => a + l.ead, 0);
-  const cats = (['A', 'B', 'C'] as const).map((c) => {
-    const xs = loans.filter((l) => bookCategory(l) === c);
-    return { c, n: xs.length, ead: xs.reduce((a, l) => a + l.ead, 0) };
-  });
+  const runs = await screenRuns();
+  const volta = loans.find((l) => l.id === 'GH-200001');
+  const pickList = [...(volta ? [volta] : []), ...loans.filter((l) => l.sector === 'renew').slice(0, 15), ...[...loans].sort((a, b) => b.ead - a.ead).slice(0, 25)];
+  const seen = new Set<string>();
+  const facilities: FacilityOption[] = pickList.filter((l) => (seen.has(l.id) ? false : (seen.add(l.id), true))).map((l) => ({
+    id: l.id, borrower: l.borrower, sector: l.sector, sectorName: sectorOf(l.sector).name, region: l.region, ead: l.ead,
+    preset: l.id === 'GH-200001' ? voltaPreset(l) : defaultInput(l),
+  }));
 
   return (
     <>
-      <PageHead area="Engine I · ESMS & SDG screening" title="Screening at origination" intro="Before a loan is approved, the borrower is screened against the exclusion list, categorised for environmental and social risk, scored for climate risk at its location, and tagged to the SDGs and taxonomy. The decision and its reasons are recorded in the audit trail." />
+      <PageHead area="Engine I · Unified ESMS, NDC, taxonomy and SDG screening" title="Sustainability screening" intro="Borrower and transaction data are captured once. Four independent rule sets (ESMS, Ghana NDC, Green Taxonomy, SDG) each give their own result; there is no composite score, and sustainability tags never override an ESMS restriction.">
+        <Btn href="/screening/portfolio">Portfolio screening →</Btn>
+      </PageHead>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {cats.map(({ c, n, ead: e }) => <Stat key={c} label={`Existing book · category ${c}`} value={pct(e / ead)} sub={`${n} facilities · ${ghs(e)}`} tone={c === 'A' ? 'bad' : c === 'B' ? 'warn' : 'good'} />)}
-        <Stat label="Screenings recorded" value={String(list.length)} sub={latest ? `latest ${latest.id}` : 'none yet'} />
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+        {['Loan application', 'Validate', 'Dynamic questionnaire', 'Exclusion gate', 'ESMS · NDC · Taxonomy · SDG', 'Evidence review', 'Approval or escalation', 'Portfolio and Engines II–VI'].map((s, i, a) => (
+          <span key={s} className="flex items-center gap-2"><span className="rounded bg-white px-2 py-1 ring-1 ring-zinc-200">{s}</span>{i < a.length - 1 && '→'}</span>
+        ))}
       </div>
 
-      <Card title="New loan application" className="mt-6" note="prefilled example: edit any field">
+      <Card title="Rule sets in force" note="version-controlled; every run records the versions it used">
+        <Table head={['Framework', 'Version', 'Source', 'Status']} rows={Object.values(FRAMEWORK_VERSIONS).map((f) => [<b key="n">{f.name}</b>, <span key="v" className="font-mono text-xs">{f.version}</span>, <span key="s" className="text-xs">{f.source}</span>, <span key="t" className="text-xs text-amber-700">{f.status}</span>])} />
+      </Card>
+
+      <Card title="New screening" className="mt-6" note="prefilled with Volta Agro Processing: edit any field">
         {user.can.includes('run' as never)
-          ? <ScreenForm sectors={SECTORS.map(({ key, name }) => ({ key, name }))} regions={REGIONS.map((r) => r.name)} exclusions={EXCLUSIONS} flags={ES_FLAGS} />
-          : <p className="text-sm text-zinc-600">{user.name} ({user.role}) can review screenings but not record them. Switch to an analyst (Kofi Mensah) at the top right to screen a new application.</p>}
+          ? <ScreenBuilder facilities={facilities} />
+          : <p className="text-sm text-zinc-600">{user.name} ({user.role}) can review screenings but not create them. Switch to an analyst (Kofi Mensah) to run one.</p>}
       </Card>
 
-      {latest && (
-        <Card title={`Result: ${latest.app.borrower} (${latest.id})`} className="mt-6" note={`${sectorOf(latest.app.sector).name} · ${latest.app.region} · GHS ${latest.app.amountM}m · by ${latest.by}`}>
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge tone={tone(latest.result.decision)}>{latest.result.decision}</Badge>
-            <Badge tone={latest.result.category === 'A' ? 'red' : latest.result.category === 'B' ? 'amber' : 'green'}>E&amp;S category {latest.result.category}</Badge>
-            <span className="text-sm text-zinc-600">{latest.result.reasons.join(' · ')}</span>
-          </div>
-          <div className="mt-4 grid gap-6 lg:grid-cols-2">
-            <Table head={['Check', 'Result']} align={['l', 'r']} rows={[
-              ['Physical risk today', score(latest.result.physicalToday)],
-              ['Physical risk 2050 (Current Policies)', <span key="p">{score(latest.result.physical2050)} · main hazard {latest.result.topHazard}</span>],
-              ['Transition risk 2040 (Delayed Transition)', score(latest.result.transition)],
-              ['SDGs supported', latest.result.sdg.map((s) => `SDG ${s}`).join(', ')],
-              ['Ghana NDC sector', latest.result.ndc ?? 'n/a'],
-              ['Green taxonomy', latest.result.taxonomy],
-            ]} />
-            <div>
-              <p className="text-sm font-semibold">Conditions</p>
-              {latest.result.conditions.length
-                ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{latest.result.conditions.map((c) => <li key={c}>{c}</li>)}</ul>
-                : <p className="mt-2 text-sm text-zinc-600">None.</p>}
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <Card title="Screening register" className="mt-6" note="every decision is in the audit trail">
-        {list.length === 0 ? <p className="text-sm text-zinc-500">No screenings recorded yet.</p> : (
-          <Table head={['ID', 'When', 'Borrower', 'Sector', 'Amount', 'Category', 'Decision', 'By']} rows={list.map((s) => [
-            <span key="i" className="font-mono text-xs">{s.id}</span>, when(s.at), s.app.borrower, sectorOf(s.app.sector).name, `GHS ${s.app.amountM}m`, s.result.category,
-            <Badge key="d" tone={tone(s.result.decision)}>{s.result.decision}</Badge>, s.by,
-          ])} />
+      <Card title="Screening register" className="mt-6" note="every run is kept; a change creates a new run">
+        {runs.length === 0 ? <p className="text-sm text-zinc-500">No screenings yet.</p> : (
+          <Table head={['Run', 'When', 'Facility', 'Status', 'ESMS', 'Taxonomy', 'By', 'Replaces']} align={['l', 'l', 'l', 'l', 'l', 'l', 'l', 'l']}
+            rows={runs.map((r) => {
+              const res = screen(effectiveInput(r));
+              const tax = res.taxonomy.reduce<Record<string, number>>((a, t) => ({ ...a, [t.status]: (a[t.status] ?? 0) + t.amount }), {});
+              return [
+                <Link key="i" href={`/screening/${r.id}`} className="font-mono text-xs underline">{r.id}</Link>, when(r.createdAt), `${r.borrower} (${r.facilityId})`,
+                <Badge key="s" tone={STATUS_TONE[r.status]}>{r.status}</Badge>, `${res.esms.gate} · ${res.esms.tier}`,
+                <span key="t" className="text-xs">{Object.entries(tax).map(([k, v]) => `${k} ${ghs(v)}`).join(' · ')}</span>, r.by, r.parent ?? '—',
+              ];
+            })} />
         )}
-      </Card>
-
-      <Card title="Decision rules" className="mt-6">
-        <Table head={['Rule', 'Outcome']} rows={[
-          ['Any exclusion-list activity', 'Decline'],
-          ['Category A: high-risk sector with land acquisition or a protected area, or a high-risk sector at GHS 50m+ with E&S flags', 'Refer to the E&S committee; ESAP required'],
-          ['Category B: high-risk sector or any E&S flag', 'Proceed with conditions (ESAP)'],
-          ['Physical risk at 2050 ≥ 3.0 (of 5)', 'Adaptation and insurance condition'],
-          ['Transition risk ≥ 2.6 (of 5) and no transition plan', 'Transition plan covenant'],
-        ]} />
-        <Illustrative>Categories follow the IFC A/B/C approach. The exclusion list, questionnaire and thresholds are illustrative and would be replaced by GCB’s ESMS policy.</Illustrative>
+        <Illustrative>Rules are a representative, provisional subset of the official sources named above. IFC rules stand in for GCB’s ESMS policy until it is supplied. Evidence in this demo is synthetic.</Illustrative>
       </Card>
     </>
   );

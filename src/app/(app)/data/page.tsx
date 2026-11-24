@@ -3,6 +3,7 @@ import { Badge, Card, Illustrative, PageHead, Stat, Table } from '@/components/u
 import { IngestForm } from '@/components/ingest-form';
 import { ghs, when } from '@/lib/fmt';
 import { COLUMNS } from '@/lib/portfolio';
+import { VALIDATION_RULES } from '@/lib/ingest';
 import { HAZARD_DATA_VERSION } from '@/lib/params';
 
 export const dynamic = 'force-dynamic';
@@ -36,8 +37,14 @@ export default async function DataPage() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card title="Exception queue" note={`${dataset.rejected.length} rows`}>
+        <Card title="Validation rules and data governance" note={`${dataset.rejected.length} rows rejected`}>
+          <Table head={['Rule', 'Check', 'Field', 'Rows failing']} align={['l', 'l', 'l', 'r']} rows={VALIDATION_RULES.map((v) => {
+            const n = dataset.rejected.filter((r) => r.reasons.some((x) => v.match.test(x))).length;
+            return [<span key="c" className="font-mono text-xs">{v.code}</span>, v.rule, <span key="f" className="font-mono text-xs">{v.field}</span>, <span key="n" className={n ? 'font-semibold text-red-600' : 'text-emerald-700'}>{n ? n : '✓ 0'}</span>];
+          })} />
+          <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-zinc-500">Rejected rows (exception queue)</p>
           <Table head={['Row', 'Facility', 'Reason']} rows={dataset.rejected.map((r) => [r.row, <span key="i" className="font-mono text-xs">{r.id}</span>, r.reasons.join('; ')])} />
+          <p className="mt-2 text-xs text-zinc-500">Rejected rows never reach the models. Each goes back to the data owner to fix and reload; totals are reconciled on every load.</p>
         </Card>
         <Card title="Data quality warnings">
           <ul className="space-y-2 text-sm">

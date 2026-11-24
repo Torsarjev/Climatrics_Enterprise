@@ -37,7 +37,7 @@ export default async function GovernancePage() {
             ['Physical hazard scoring', HAZARD_DATA_VERSION, 'GIS lead', <Badge key="b" tone="amber">pending validation</Badge>],
             ['Loss distribution (one-factor)', 'vasicek-mc-1.0', 'Quant lead', <Badge key="c" tone="amber">pending validation</Badge>],
             ['ICAAP/ILAAP bridge', 'capital-bridge-0.1', 'Treasury / ALM', <Badge key="d" tone="amber">pending validation</Badge>],
-            ['ESMS screening rules', 'esms-rules-0.1', 'Sustainability / ESMS', <Badge key="e" tone="amber">pending validation</Badge>],
+            ['Engine I screening rules (ESMS, NDC, taxonomy, SDG)', 'esg-rules v0.1 · provisional', 'Sustainability / ESMS', <Badge key="e" tone="amber">pending validation</Badge>],
             ['Financed emissions (PCAF)', 'pcaf-business-loans-0.1', 'Sustainability', <Badge key="f" tone="amber">pending validation</Badge>],
           ]} />
         </Card>

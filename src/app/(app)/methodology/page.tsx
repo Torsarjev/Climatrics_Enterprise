@@ -56,7 +56,7 @@ export default async function MethodologyPage() {
           ['Reconciliation (read = accepted + rejected)', c.reconciled ? 'Balanced ✓' : 'Break ✕'],
           ['Dataset version and fingerprint', `${dataset.id} · SHA-256 ${dataset.hash.slice(0, 16)}…`],
         ]} />
-        <Links items={[['/data', 'Validation and exception queue'], ['/portfolio', 'Exposure by sector, region, collateral and maturity']]} />
+        <Links items={[['/data', 'Validation rules and data governance'], ['/portfolio', 'Exposure by sector, region, collateral and maturity']]} />
       </Section>
 
       <Section id="pd" title={`Weighted PD (performing): ${pct(wPd, 2)}`}>
@@ -85,7 +85,7 @@ export default async function MethodologyPage() {
         <Table head={['#', 'Facility', 'Borrower', 'Sector', 'EAD', 'Share of book']} align={['l', 'l', 'l', 'l', 'r', 'r']}
           rows={[...top10.map((l, i) => [i + 1, <span key="i" className="font-mono text-xs">{l.id}</span>, l.borrower, sectorName(l.sector), ghs(l.ead), pct(l.ead / D.ead, 2)]),
             ['', '', <b key="t">Top 10</b>, '', <b key="e">{ghs(top10Ead)}</b>, <b key="p">{pct(top10Ead / D.ead)}</b>]]} />
-        <Links items={[['/portfolio', 'Largest exposures']]} />
+        <Links items={[['/portfolio', 'Largest exposures by borrower']]} />
       </Section>
 
       <Section id="high-risk" title={`High-risk exposure: ${pct(D.highRisk / D.ead)} (${ghs(D.highRisk)})`}>

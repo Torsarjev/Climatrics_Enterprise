@@ -5,7 +5,8 @@ import { SESSION_COOKIE, readSession } from './auth';
 import { demoExtract, Loan } from './portfolio';
 import { ingestCsv, IngestResult } from './ingest';
 import { runStress, RunInput, StressRun } from './engine';
-import { Application, ScreeningResult, screen } from './screening';
+import { ScreenInput, screen, validate } from './esg/engine';
+import { CRITERIA, FRAMEWORK_VERSIONS, QUESTIONS } from './esg/rules';
 import * as P from './params';
 import { sha256 } from './math';
 import { onNetlify, readText, writeText } from './kv';
@@ -25,8 +26,13 @@ export interface RunRecord {
   headline: { ecl: number; eclStressed: number; carBefore: number; carAfter: number; lcrAfter: number; var999: number };
 }
 export interface AuditEvent { at: string; by: string; action: string; target: string; detail?: string }
-export interface ScreeningRecord { id: string; at: string; by: string; app: Application; result: ScreeningResult }
-interface Db { datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenings?: ScreeningRecord[] }
+export interface ScreenRunRecord {
+  id: string; createdAt: string; by: string; facilityId: string; borrower: string; parent?: string;
+  input: ScreenInput; rulesHash: string; versions: Record<string, string>;
+  status: 'draft' | 'submitted' | 'approved' | 'escalated' | 'returned';
+  verifiedEvidence?: string[]; submittedBy?: string; reviewedBy?: string; reviewedAt?: string; note?: string;
+}
+interface Db { datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[] }
 
 const g = globalThis as unknown as { __db?: Db; __loans?: Map<string, Loan[]>; __runs?: Map<string, StressRun> };
 g.__loans ??= new Map();
@@ -165,14 +171,62 @@ export async function logView(action: string, target: string, detail?: string) {
   await save(d);
 }
 
-export async function recordScreening(app: Application) {
+export const rulesHash = () => sha256(JSON.stringify({ CRITERIA, QUESTIONS, FRAMEWORK_VERSIONS }));
+
+export const effectiveInput = (r: ScreenRunRecord): ScreenInput => ({
+  ...r.input,
+  evidence: Object.fromEntries(Object.entries(r.input.evidence).map(([k, v]) => [k, r.verifiedEvidence?.includes(k) && v.status !== 'missing' ? { ...v, status: 'verified' as const } : v])),
+});
+
+export async function screenRuns() { return (await db()).screenRuns ?? []; }
+export async function getScreenRun(id: string) {
+  const r = (await screenRuns()).find((x) => x.id === id);
+  return r ? { rec: r, result: screen(effectiveInput(r)) } : null;
+}
+
+export async function createScreenRun(input: ScreenInput, parent?: string) {
   const d = await db(), u = await currentUser();
-  if (!u.can.includes('run' as never)) throw new Error('Only an analyst can record a screening');
-  d.screenings ??= [];
-  const result = screen(app);
-  const id = `SCR-${String(d.screenings.length + 1).padStart(4, '0')}`;
-  d.screenings.unshift({ id, at: now(), by: u.name, app, result });
-  d.audit.unshift({ at: now(), by: u.name, action: 'screening.recorded', target: id, detail: `${app.borrower} · category ${result.category} · ${result.decision}` });
+  if (!u.can.includes('run' as never)) throw new Error('Only an analyst can run a screening');
+  const v = validate(input);
+  if (!v.ok) throw new Error(v.errors.join('; '));
+  d.screenRuns ??= [];
+  const id = `SCR-${String(d.screenRuns.length + 1).padStart(4, '0')}`;
+  const rec: ScreenRunRecord = {
+    id, createdAt: now(), by: u.name, facilityId: input.facilityId, borrower: input.borrower, parent,
+    input: { ...input, evidence: Object.fromEntries(Object.entries(input.evidence).map(([k, e]) => [k, { ...e, status: e.status === 'verified' ? 'provided' as const : e.status }])) },
+    rulesHash: await rulesHash(), versions: Object.fromEntries(Object.entries(FRAMEWORK_VERSIONS).map(([k, f]) => [k, f.version])), status: 'draft',
+  };
+  const r = screen(rec.input);
+  d.screenRuns.unshift(rec);
+  d.audit.unshift({ at: now(), by: u.name, action: parent ? 'screening.rescreened' : 'screening.run', target: id, detail: `${input.borrower} (${input.facilityId}) · ESMS ${r.esms.gate}/${r.esms.tier} · ${r.decision.label}${parent ? ` · replaces ${parent}` : ''}` });
   await save(d);
   return id;
+}
+
+export async function attachEvidence(id: string, evidenceId: string, ref: string) {
+  const found = (await screenRuns()).find((x) => x.id === id);
+  if (!found) throw new Error('Screening run not found');
+  if (found.status === 'approved') throw new Error('Approved runs are locked; start a new screening');
+  const input: ScreenInput = { ...found.input, evidence: { ...found.input.evidence, [evidenceId]: { status: 'provided', ref } } };
+  return createScreenRun(input, id);
+}
+
+export async function reviewScreenRun(id: string, action: 'submit' | 'approve' | 'escalate' | 'return', note?: string) {
+  const d = await db(), u = await currentUser();
+  const rec = (d.screenRuns ?? []).find((x) => x.id === id);
+  if (!rec) throw new Error('Screening run not found');
+  if (action === 'submit') {
+    if (!u.can.includes('run' as never)) throw new Error('Only an analyst can submit a screening');
+    if (rec.status !== 'draft' && rec.status !== 'returned') throw new Error('Only drafts can be submitted');
+    rec.status = 'submitted'; rec.submittedBy = u.name;
+  } else {
+    if (!u.can.includes('approve' as never)) throw new Error('Only an approver can review screenings');
+    if (rec.status !== 'submitted') throw new Error('The screening must be submitted first');
+    if (rec.by === u.name || rec.submittedBy === u.name) throw new Error('Maker-checker: you cannot review your own screening');
+    if (action === 'approve') rec.verifiedEvidence = Object.entries(rec.input.evidence).filter(([, e]) => e.status === 'provided').map(([k]) => k);
+    rec.status = action === 'approve' ? 'approved' : action === 'escalate' ? 'escalated' : 'returned';
+    rec.reviewedBy = u.name; rec.reviewedAt = now(); rec.note = note;
+  }
+  d.audit.unshift({ at: now(), by: u.name, action: `screening.${action === 'submit' ? 'submitted' : action === 'approve' ? 'approved' : action === 'escalate' ? 'escalated' : 'returned'}`, target: id, detail: [note, action === 'approve' && rec.verifiedEvidence?.length ? `evidence verified: ${rec.verifiedEvidence.join(', ')}` : ''].filter(Boolean).join(' · ') || undefined });
+  await save(d);
 }

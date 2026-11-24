@@ -2,6 +2,17 @@ import { COLUMNS, Loan } from './portfolio';
 import { COLLATERAL, REGIONS, SECTORS } from './params';
 
 export interface Rejection { row: number; id: string; reasons: string[] }
+
+export const VALIDATION_RULES: { code: string; rule: string; field: string; match: RegExp }[] = [
+  { code: 'V01', rule: 'Facility id present and unique', field: 'id', match: /facility id/i },
+  { code: 'V02', rule: 'Sector is in the sector dictionary', field: 'sector', match: /Unknown sector/ },
+  { code: 'V03', rule: 'Region is one of Ghana’s 16 regions', field: 'region', match: /region/i },
+  { code: 'V04', rule: 'Exposure (EAD) is a positive amount', field: 'ead', match: /EAD/ },
+  { code: 'V05', rule: 'PD is between 0 and 1', field: 'pd', match: /^PD/ },
+  { code: 'V06', rule: 'LGD is between 0 and 1', field: 'lgd', match: /^LGD/ },
+  { code: 'V07', rule: 'Collateral type is in the dictionary', field: 'collateralType', match: /collateral type/i },
+  { code: 'V08', rule: 'Coordinates present and inside Ghana', field: 'lat, lon', match: /Location/ },
+];
 export interface IngestResult {
   accepted: Loan[]; rejected: Rejection[];
   control: { rowsRead: number; rowsAccepted: number; rowsRejected: number; eadRead: number; eadAccepted: number; eadRejected: number; reconciled: boolean };

@@ -44,7 +44,7 @@ export default async function PortfolioPage() {
           <Card title="By IFRS 9 stage"><Bars rows={byStage} format={share} /></Card>
         </div>
       </div>
-      <Card title="Largest exposures" className="mt-6">
+      <Card title="Largest exposures by borrower" className="mt-6">
         <Table head={['Facility', 'Borrower', 'Sector', 'Region', 'EAD', 'Collateral', 'Maturity', 'PD']} align={['l', 'l', 'l', 'l', 'r', 'l', 'r', 'r']} rows={top.map((l) => [
           <span key="i" className="font-mono text-xs">{l.id}</span>, l.borrower, SECTORS.find((s) => s.key === l.sector)!.name, l.region, ghs(l.ead), COLLATERAL[l.collateralType].name, `${l.maturityYears}y`, l.pd >= 1 ? 'Default' : pct(l.pd, 2),
         ])} />

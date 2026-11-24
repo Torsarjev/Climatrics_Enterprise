@@ -3,10 +3,11 @@
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { USERS, audit, createRun, ingest, recordScreening, reproduce, review, sessionUser } from '@/lib/store';
+import { USERS, attachEvidence, audit, createRun, createScreenRun, ingest, reproduce, review, reviewScreenRun, sessionUser } from '@/lib/store';
+import type { ScreenInput } from '@/lib/esg/engine';
 import { SESSION_COOKIE, authConfigured, checkPassword, clearFails, createSession, lockedFor, recordFail } from '@/lib/auth';
 import { demoExtract } from '@/lib/portfolio';
-import type { Horizon, ScenarioKey, SectorKey } from '@/lib/params';
+import type { Horizon, ScenarioKey } from '@/lib/params';
 import type { Approach } from '@/lib/engine';
 
 export async function loginAction(_: unknown, form: FormData) {
@@ -80,19 +81,33 @@ export async function reproduceAction(_: unknown, form: FormData) {
   return r;
 }
 
-export async function screenAction(_: unknown, form: FormData) {
+export async function screenRunAction(_: unknown, form: FormData) {
+  let id: string;
   try {
-    const borrower = String(form.get('borrower') ?? '').trim();
-    const amountM = Number(form.get('amount'));
-    if (!borrower) return { error: 'Enter the borrower name' };
-    if (!(amountM > 0)) return { error: 'Enter a loan amount above zero' };
-    const id = await recordScreening({
-      borrower, amountM, sector: form.get('sector') as SectorKey, region: String(form.get('region')), purpose: String(form.get('purpose') ?? ''),
-      transitionPlan: form.get('plan') === 'on', exclusions: form.getAll('exclusion').map(String), flags: form.getAll('flag').map(String),
-    });
-    revalidatePath('/', 'layout');
-    return { ok: true, id };
+    const input = JSON.parse(String(form.get('payload'))) as ScreenInput;
+    id = await createScreenRun(input);
   } catch (e) {
     return { error: (e as Error).message };
   }
+  redirect(`/screening/${id}`);
+}
+
+export async function evidenceAction(_: unknown, form: FormData) {
+  let id: string;
+  try {
+    id = await attachEvidence(String(form.get('id')), String(form.get('evidence')), String(form.get('ref') ?? '').trim() || 'synthetic-document.pdf');
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  redirect(`/screening/${id}`);
+}
+
+export async function screenReviewAction(_: unknown, form: FormData) {
+  try {
+    await reviewScreenRun(String(form.get('id')), form.get('action') as 'submit' | 'approve' | 'escalate' | 'return', String(form.get('note') ?? '') || undefined);
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  revalidatePath('/', 'layout');
+  return { ok: true };
 }
