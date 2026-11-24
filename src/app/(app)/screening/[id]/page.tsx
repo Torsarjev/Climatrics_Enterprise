@@ -67,8 +67,8 @@ export default async function ScreenRunPage({ params }: { params: Promise<{ id: 
           })} />
         </Card>
         <Card title="Review and approval" note="maker-checker">
-          <ScreenReview id={rec.id} status={rec.status} canRun={user.can.includes('run' as never)} canApprove={user.can.includes('approve' as never)} isMaker={rec.by === user.name || rec.submittedBy === user.name} hasProvided={Object.values(rec.input.evidence).some((e) => e.status === 'provided')} />
-          {rec.reviewedBy && <p className="mt-3 text-sm text-zinc-600">Reviewed by {rec.reviewedBy} on {when(rec.reviewedAt!)}{rec.note ? `: “${rec.note}”` : ''}</p>}
+          <ScreenReview id={rec.id} status={rec.status} canRun={user.can.includes('run' as never)} canApprove={user.can.includes('approve' as never)} isMaker={rec.by === user.name || rec.submittedBy === user.name} hasProvided={Object.values(rec.input.evidence).some((e) => e.status === 'provided')} reviewedBy={rec.reviewedBy} note={rec.note} />
+          {rec.reviewedBy && rec.status !== 'returned' && <p className="mt-3 text-sm text-zinc-600">{rec.status === 'submitted' ? 'Previously returned by' : 'Reviewed by'} {rec.reviewedBy} on {when(rec.reviewedAt!)}{rec.note ? `: “${rec.note}”` : ''}</p>}
           <p className="mt-4 text-xs font-semibold uppercase text-zinc-500">Runs for this facility</p>
           <ul className="mt-1 text-sm">{history.map((h) => <li key={h.id}><Link href={`/screening/${h.id}`} className={`font-mono text-xs underline ${h.id === rec.id ? 'font-bold' : ''}`}>{h.id}</Link> · {h.status} · {when(h.createdAt)}</li>)}</ul>
           <p className="mt-3 text-xs text-zinc-500">Rules fingerprint {rec.rulesHash.slice(0, 16)}… · {Object.entries(rec.versions).map(([k, v]) => `${k} ${v}`).join(' · ')}</p>
