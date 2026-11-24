@@ -6,7 +6,7 @@ import { GRADES } from '@/lib/engine';
 import { Badge, Btn, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
 import { LossChart } from '@/components/loss-chart';
 import { ReproduceButton, ReviewPanel } from '@/components/review-panel';
-import { delta, ghs, num, pct, pp, when } from '@/lib/fmt';
+import { delta, ghs, num, pct, pp, when, s5 } from '@/lib/fmt';
 import { logit } from '@/lib/math';
 
 export const dynamic = 'force-dynamic';
@@ -48,7 +48,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
       <Card title="Impact by sector" className="mt-6">
         <Table head={['Sector', 'EAD', 'PD before → after', 'ECL before', 'ECL after', 'Change', 'Transition', 'Physical']} align={['l', 'r', 'r', 'r', 'r', 'r', 'r', 'r']}
           rows={S.bySector.filter((s) => s.ead > 0).sort((a, b) => b.eclStressed - b.ecl - (a.eclStressed - a.ecl)).map((s) => [
-            s.name, ghs(s.ead), `${pct(s.pd, 2)} → ${pct(s.pdStressed, 2)}`, ghs(s.ecl), ghs(s.eclStressed), <span key="d" className="text-red-600">{delta(s.ecl, s.eclStressed)}</span>, num(s.transition), num(s.physical),
+            s.name, ghs(s.ead), `${pct(s.pd, 2)} → ${pct(s.pdStressed, 2)}`, ghs(s.ecl), ghs(s.eclStressed), <span key="d" className="text-red-600">{delta(s.ecl, s.eclStressed)}</span>, s5(s.transition), s5(s.physical),
           ])} />
       </Card>
 
@@ -93,15 +93,15 @@ export default async function RunPage({ params, searchParams }: { params: Promis
           <Table head={['Step', 'Value']} align={['l', 'r']} rows={[
             ['Bank PD (input)', pick.pd >= 1 ? 'Default' : pct(pick.pd, 2)],
             ['Starting log-odds', pick.pd >= 1 ? '—' : num(logit(pick.pd))],
-            [`+ Transition (score ${num(pick.transition)} × β)`, `+${num(pick.drivers.transition)}`],
-            [`+ Physical (score ${num(pick.physical)} × intensification × β)`, `+${num(pick.drivers.physical)}`],
+            [`+ Transition (score ${s5(pick.transition)}/5 · ${num(pick.transition)} × β)`, `+${num(pick.drivers.transition)}`],
+            [`+ Physical (score ${s5(pick.physical)}/5 · ${num(pick.physical)} × intensification × β)`, `+${num(pick.drivers.physical)}`],
             ['+ Macro (Ghana GDP shock)', `+${num(pick.drivers.macro)}`],
             [<b key="p">Stressed PD</b>, <b key="v">{pick.pd >= 1 ? 'Default' : `${pct(pick.pd, 2)} → ${pct(pick.pdStressed, 2)}`}</b>],
             [`LGD (collateral haircut ${pct(pick.haircut)})`, `${pct(pick.lgd)} → ${pct(pick.lgdStressed)}`],
             ['IFRS 9 stage', `${pick.stage} → ${pick.stageStressed}`],
             [<b key="e">ECL</b>, <b key="ev">{ghs(pick.ecl)} → {ghs(pick.eclStressed)}</b>],
           ]} />
-          <p className="mt-3 text-xs text-zinc-500">Physical drivers: {HAZARDS.map((h) => `${h} ${num(pick.physicalDrivers[h])}`).join(' · ')}{pickLoan && ` · transition plan: ${pickLoan.transitionPlan ? 'yes' : 'no'} · location: ${pickLoan.geoConfidence}`}</p>
+          <p className="mt-3 text-xs text-zinc-500">Physical drivers: {HAZARDS.map((h) => `${h} ${s5(pick.physicalDrivers[h])}`).join(' · ')}{pickLoan && ` · transition plan: ${pickLoan.transitionPlan ? 'yes' : 'no'} · location: ${pickLoan.geoConfidence}`}</p>
         </Card>
       </div>
 

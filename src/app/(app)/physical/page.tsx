@@ -3,7 +3,7 @@ import { COLLATERAL, HAZARDS, REGIONS, SECTORS, sectorOf } from '@/lib/params';
 import { physicalScore } from '@/lib/engine';
 import { Bars, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
 import { RiskMap } from '@/components/risk-map-lazy';
-import { ghs, num, pct } from '@/lib/fmt';
+import { ghs, pct, s5, to5 } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +31,9 @@ export default async function PhysicalPage() {
 
   return (
     <>
-      <PageHead area="Engine II · Physical risk" title="Physical risk" intro="Each facility's collateral location is overlaid on hazard layers. Hazard intensity × sector and collateral vulnerability gives a 0–1 physical risk score, today and under each scenario." />
+      <PageHead area="Engine II · Physical risk" title="Physical risk" intro="Each facility's collateral location is overlaid on hazard layers. Hazard intensity × sector and collateral vulnerability gives a physical risk score from 1 (low) to 5 (very high), today and under each scenario." />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="EAD with high physical risk (≥ 0.5)" value={pct(highEad / ead)} sub={ghs(highEad)} tone="warn" />
+        <Stat label="EAD with high physical risk (≥ 3.0 of 5)" value={pct(highEad / ead)} sub={ghs(highEad)} tone="warn" />
         <Stat label="Facilities scored" value={String(scored.length)} sub="4 hazards each" />
         <Stat label="Lower-confidence locations" value={pct(lowConf / ead)} sub="address or region only" />
         <Stat label="Hazard data" value="4 layers" sub="flood · drought · heat · coastal" />
@@ -46,17 +46,17 @@ export default async function PhysicalPage() {
         <Illustrative>Hazard scores are illustrative regional values. Production uses grid-level data (CCKP, ERA5, NASA POWER, Fathom flood depths) at each collateral coordinate.</Illustrative>
       </Card>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card title="Physical risk score by sector" note="EAD-weighted, today"><Bars rows={bySector} format={(n) => num(n)} max={1} color="bg-orange-500" /></Card>
+        <Card title="Physical risk score by sector" note="EAD-weighted, today"><Bars rows={bySector.map((r) => ({ ...r, value: to5(r.value) }))} format={(n) => n.toFixed(1)} max={5} color="bg-orange-500" /></Card>
         <Card title="Collateral value in high-hazard locations" note="input to LGD haircut"><Bars rows={collAtRisk} format={(n) => ghs(n)} color="bg-orange-500" /></Card>
       </div>
-      <Card title="How a score is built: vulnerability matrix" className="mt-6" note="sector vulnerability to each hazard, 0–1">
-        <Table head={['Sector', ...HAZARDS]} align={['l', 'r', 'r', 'r', 'r']} rows={SECTORS.map((s) => [s.name, ...HAZARDS.map((h) => num(sectorOf(s.key).vuln[h]))])} />
-        <p className="mt-3 text-xs text-zinc-500">Score = 0.7 × worst (hazard × vulnerability) + 0.3 × average across hazards. Explainable per facility.</p>
+      <Card title="How a score is built: vulnerability matrix" className="mt-6" note="sector vulnerability to each hazard, 1 (low) to 5 (high)">
+        <Table head={['Sector', ...HAZARDS]} align={['l', 'r', 'r', 'r', 'r']} rows={SECTORS.map((s) => [s.name, ...HAZARDS.map((h) => s5(sectorOf(s.key).vuln[h]))])} />
+        <p className="mt-3 text-xs text-zinc-500">Score = 0.7 × worst (hazard × vulnerability) + 0.3 × average across hazards, shown on a 1–5 scale (1 + 4 × the 0–1 result). Explainable per facility.</p>
       </Card>
       <Card title="Largest physical risk concentrations" className="mt-6">
         <Table head={['Facility', 'Borrower', 'Region', 'EAD', 'Main driver', 'Score']} align={['l', 'l', 'l', 'r', 'l', 'r']} rows={worst.map(({ l, score, drivers }) => {
           const [h, v] = Object.entries(drivers).sort((a, b) => b[1] - a[1])[0];
-          return [<span key="i" className="font-mono text-xs">{l.id}</span>, l.borrower, l.region, ghs(l.ead), `${h} (${num(v)})`, num(score)];
+          return [<span key="i" className="font-mono text-xs">{l.id}</span>, l.borrower, l.region, ghs(l.ead), `${h} (${s5(v)})`, s5(score)];
         })} />
       </Card>
     </>

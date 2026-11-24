@@ -3,12 +3,12 @@ import { REGIONS, SECTORS, sectorOf } from '@/lib/params';
 import { EXCLUSIONS, ES_FLAGS, bookCategory } from '@/lib/screening';
 import { Badge, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
 import { ScreenForm } from '@/components/screen-form';
-import { ghs, pct, when } from '@/lib/fmt';
+import { ghs, pct, when, s5 } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
 const tone = (d: string) => (d === 'Proceed' ? 'green' : d === 'Decline' ? 'red' : 'amber') as 'green' | 'red' | 'amber';
-const score = (n: number) => <span className={n >= 0.5 ? 'font-semibold text-red-600' : n >= 0.3 ? 'text-amber-700' : ''}>{n.toFixed(2)}</span>;
+const score = (n: number) => <span className={n >= 0.5 ? 'font-semibold text-red-600' : n >= 0.3 ? 'text-amber-700' : ''}>{s5(n)} / 5</span>;
 
 export default async function ScreeningPage() {
   const d = await db();
@@ -77,8 +77,8 @@ export default async function ScreeningPage() {
           ['Any exclusion-list activity', 'Decline'],
           ['Category A: high-risk sector with land acquisition or a protected area, or a high-risk sector at GHS 50m+ with E&S flags', 'Refer to the E&S committee; ESAP required'],
           ['Category B: high-risk sector or any E&S flag', 'Proceed with conditions (ESAP)'],
-          ['Physical risk at 2050 ≥ 0.5', 'Adaptation and insurance condition'],
-          ['Transition risk ≥ 0.4 and no transition plan', 'Transition plan covenant'],
+          ['Physical risk at 2050 ≥ 3.0 (of 5)', 'Adaptation and insurance condition'],
+          ['Transition risk ≥ 2.6 (of 5) and no transition plan', 'Transition plan covenant'],
         ]} />
         <Illustrative>Categories follow the IFC A/B/C approach. The exclusion list, questionnaire and thresholds are illustrative and would be replaced by GCB’s ESMS policy.</Illustrative>
       </Card>

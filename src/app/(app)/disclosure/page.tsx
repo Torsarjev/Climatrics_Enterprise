@@ -35,7 +35,7 @@ export default async function DisclosurePage() {
     ['Risk management', 'Integration into overall risk management', 'Credit (ECL, staging), ICAAP and ILAAP integration', 'in system'],
     ['Metrics & targets', 'Scope 1, 2 and 3 GHG emissions, incl. financed emissions (scope 3, category 15)', <span key="f">{(fe.total / 1e3).toFixed(0)}k tCO₂e financed · {go('/emissions', 'Emissions')}; own operations from the bank</span>, 'partial'],
     ['Metrics & targets', 'Amount and share of assets vulnerable to transition risk', `${ghs(carbon)} (${pct(carbon / ead)}) in carbon-intensive sectors`, 'in system'],
-    ['Metrics & targets', 'Amount and share of assets vulnerable to physical risk', `${ghs(highPhys)} (${pct(highPhys / ead)}) with physical score ≥ 0.5 today`, 'in system'],
+    ['Metrics & targets', 'Amount and share of assets vulnerable to physical risk', `${ghs(highPhys)} (${pct(highPhys / ead)}) with physical score ≥ 3.0 of 5 today`, 'in system'],
     ['Metrics & targets', 'Assets aligned with climate opportunities', `${ghs(green)} (${pct(green / ead)}) green / aligned`, 'in system'],
     ['Metrics & targets', 'Climate-related targets and progress', 'Targets set by the board; tracked here once agreed', 'bank input'],
   ];

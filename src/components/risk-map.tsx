@@ -26,7 +26,7 @@ export default function RiskMap({ points, regions }: { points: MapPoint[]; regio
         <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         {layer !== 'composite' && regions.map((r) => (
           <CircleMarker key={r.name} center={[r.lat, r.lon]} radius={38} pathOptions={{ color: color(r.hazard[layer]), fillColor: color(r.hazard[layer]), fillOpacity: 0.28, weight: 1 }}>
-            <Tooltip>{r.name}: {layer} hazard {r.hazard[layer].toFixed(2)}</Tooltip>
+            <Tooltip>{r.name}: {layer} hazard {(1 + 4 * r.hazard[layer]).toFixed(1)} / 5</Tooltip>
           </CircleMarker>
         ))}
         {points.map((p) => {
@@ -35,7 +35,7 @@ export default function RiskMap({ points, regions }: { points: MapPoint[]; regio
             <CircleMarker key={p.id} center={[p.lat, p.lon]} radius={3 + 9 * Math.sqrt(p.ead / maxEad)} pathOptions={{ color: color(v), fillColor: color(v), fillOpacity: 0.75, weight: p.geo === 'gps' ? 1 : 2, dashArray: p.geo === 'gps' ? undefined : '3' }}>
               <Tooltip>
                 <b>{p.borrower}</b> · {p.id}<br />
-                GHS {(p.ead / 1e6).toFixed(1)}m · score {v.toFixed(2)} · location {p.geo}
+                GHS {(p.ead / 1e6).toFixed(1)}m · score {(1 + 4 * v).toFixed(1)} / 5 · location {p.geo}
               </Tooltip>
             </CircleMarker>
           );

@@ -3,7 +3,7 @@ import { SECTORS, sectorOf } from '@/lib/params';
 import { transitionScore } from '@/lib/engine';
 import { financedBook } from '@/lib/emissions';
 import { Badge, Bars, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
-import { ghs, num, pct } from '@/lib/fmt';
+import { ghs, num, pct, s5 } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,11 +29,11 @@ export default async function TransitionPage() {
         <Stat label="Carbon-intensive sectors" value={pct(intEad / ead)} sub={ghs(intEad)} tone="warn" />
         <Stat label="With a credible transition plan" value={pct(plans / (intEad || 1))} sub="of carbon-intensive EAD" />
         <Stat label="Financed emissions" value={`${(financed / 1000).toFixed(0)}k tCO₂e`} sub="PCAF · detail on the Emissions page" />
-        <Stat label="Sectors assessed" value={String(SECTORS.length)} sub="sensitivity scored 0–1" />
+        <Stat label="Sectors assessed" value={String(SECTORS.length)} sub="sensitivity scored 1–5" />
       </div>
       <Card title="Sector sensitivity and counterparty readiness" className="mt-6">
-        <Table head={['Sector', 'Sensitivity', 'Carbon intensity', 'EAD', 'Share with plan', 'Counterparty score (max shock)']} align={['l', 'r', 'r', 'r', 'r', 'r']} rows={rows.map(({ s, e, plan, score }) => [
-          <span key="n">{s.name} {s.transition >= 0.5 && <Badge tone="amber">carbon-intensive</Badge>}</span>, num(s.transition), `${s.carbonIntensity} t/GHS m`, ghs(e), pct(plan, 0), num(score),
+        <Table head={['Sector', 'Sensitivity (1–5)', 'Carbon intensity', 'EAD', 'Share with plan', 'Counterparty score (1–5, max shock)']} align={['l', 'r', 'r', 'r', 'r', 'r']} rows={rows.map(({ s, e, plan, score }) => [
+          <span key="n">{s.name} {s.transition >= 0.5 && <Badge tone="amber">carbon-intensive</Badge>}</span>, s5(s.transition), `${s.carbonIntensity} t/GHS m`, ghs(e), pct(plan, 0), s5(score),
         ])} />
         <p className="mt-3 text-xs text-zinc-500">Counterparty score = sector sensitivity × scenario shock × (0.6 + 0.4 × relative emissions intensity) × (1 − 60% relief if a credible transition plan exists).</p>
         <Illustrative />

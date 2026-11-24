@@ -45,7 +45,7 @@ export default async function Overview() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <Kpi label="Portfolio exposure" value={ghs(ead)} sub={`${loans.length} facilities · ${dataset.id}`} />
-        <Kpi label="High-risk exposure" value={pct(D.highRisk / ead)} sub={`${ghs(D.highRisk)} · physical score ≥ 0.5 or high-transition sector without a plan`} />
+        <Kpi label="High-risk exposure" value={pct(D.highRisk / ead)} sub={`${ghs(D.highRisk)} · physical score ≥ 3.0 of 5, or high-transition sector without a plan`} />
         <Kpi label="Baseline ECL" value={ghs(D.eclBase)} sub="IFRS 9 provisions before climate stress" />
         <Kpi label="Stressed ECL" value={ghs(D.eclStressed)} sub="Current Policies (hot house) · 2050" />
       </div>
@@ -66,7 +66,7 @@ export default async function Overview() {
             </tbody>
           </table>
         </div>
-        <p className="mt-2 text-xs text-zinc-500">Physical: EAD-weighted hazard × vulnerability score today. Transition: sector sensitivity to carbon price and policy. Overall: the higher of the two.</p>
+        <p className="mt-2 text-xs text-zinc-500">Physical: EAD-weighted hazard × vulnerability score today (High ≥ 2.5 of 5). Transition: sector sensitivity to carbon price and policy. Overall: the higher of the two.</p>
 
         <hr className="my-6 border-zinc-200" />
 
