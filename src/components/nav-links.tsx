@@ -12,6 +12,8 @@ const I: Record<string, React.ReactNode> = {
   transition: <><path d="M3 21V10l5 3V10l5 3V6l8-3v18z" /><path d="M7 17h2M12 17h2M17 17h1" /></>,
   emissions: <><path d="M7 18a4 4 0 01-.5-8 6 6 0 0111.5 1.5A3.5 3.5 0 0117.5 18z" /></>,
   stress: <><path d="M3 12h4l3-8 4 16 3-8h4" /></>,
+  calibration: <><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></>,
+  compare: <><rect x="3" y="4" width="7" height="16" rx="1" /><rect x="14" y="4" width="7" height="16" rx="1" /><path d="M6.5 8v8M17.5 8v8" /></>,
   credit: <><path d="M3 7l6 6 4-4 8 8" /><path d="M15 17h6v-6" /></>,
   capital: <><path d="M3 10l9-6 9 6" /><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8" /><path d="M3 21h18" /></>,
   sdg: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /></>,

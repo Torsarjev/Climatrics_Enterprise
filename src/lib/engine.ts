@@ -1,6 +1,8 @@
-import { BANK, COLLATERAL, CREDIT, HAZARDS, Hazard, Horizon, LOSS_DIST, MODEL_VERSION, REGIONS, SECTORS, ScenarioKey, sectorOf, scenarioOf } from './params';
+import { BANK, COLLATERAL, CREDIT, HAZARDS, Hazard, Horizon, LOSS_DIST, MODEL_VERSION, REGIONS, SECTORS, ScenarioKey, sectorOf } from './params';
 import { Loan } from './portfolio';
-import { clamp, logit, normCdf, normInv, normal, rng, sigmoid } from './math';
+import { clamp, normCdf, normInv, normal, rng } from './math';
+import { GhanaShocks, ghanaShocks } from './calibration';
+import { BottomUpTrace, SectorStress, bottomUp, topDownSectors } from './transmission';
 
 export type Approach = 'bottom-up' | 'top-down';
 export interface RunInput { scenario: ScenarioKey; horizon: Horizon; approach: Approach }
@@ -10,16 +12,15 @@ export interface LoanResult {
   physical: number; physicalDrivers: Record<Hazard, number>; transition: number;
   pd: number; pdStressed: number; lgd: number; lgdStressed: number; haircut: number;
   stage: number; stageStressed: number; ecl: number; eclStressed: number;
-  drivers: { transition: number; physical: number; macro: number };
+  trace?: BottomUpTrace; sectorUplift?: number;
 }
 
 const regionOf = (name: string) => REGIONS.find((r) => r.name === name)!;
 export const GRADES = ['A', 'BBB', 'BB', 'B', 'CCC', 'CC', 'D'] as const;
 export const gradeOf = (pd: number) => (pd >= 1 ? 6 : pd < 0.005 ? 0 : pd < 0.015 ? 1 : pd < 0.04 ? 2 : pd < 0.09 ? 3 : pd < 0.18 ? 4 : 5);
 
-const lifetimePd = (pd: number, years: number) => 1 - Math.pow(1 - pd, Math.max(1, years));
-const ecl = (pd: number, lgd: number, ead: number, stage: number, years: number) =>
-  ead * lgd * (stage === 3 ? 1 : stage === 2 ? lifetimePd(pd, years) : pd);
+// Simplified one-year ECL = PD × LGD × EAD (not full IFRS 9 lifetime staging)
+const ecl = (pd: number, lgd: number, ead: number) => ead * lgd * Math.min(1, pd);
 
 export const intensification = (multiplier: number) => clamp((multiplier - 1) / 0.75, 0, 1.5);
 
@@ -47,46 +48,35 @@ export function runStress(loans: Loan[], input: RunInput) {
 }
 
 export function runCredit(loans: Loan[], input: RunInput) {
-  const sc = scenarioOf(input.scenario);
-  const shock = sc.transitionShock[input.horizon], phys = sc.physical[input.horizon], gdp = sc.gdpShock[input.horizon];
+  const G: GhanaShocks = ghanaShocks(input.scenario, input.horizon);
+  const phys = G.physical;
+  const scores = new Map(loans.map((l) => [l.id, physicalScore(l, phys)]));
+  const sectors: SectorStress[] = topDownSectors(loans, G, (l) => scores.get(l.id)!.score);
+  const bySector = new Map(sectors.map((s) => [s.key, s]));
 
-  let perLoan = loans.map((l) => {
-    const p = physicalScore(l, phys);
-    return { l, p, t: transitionScore(l, shock), h: collateralHaircut(l, phys) };
-  });
-
-  if (input.approach === 'top-down') {
-    const bySector = new Map<string, { p: number; t: number; w: number }>();
-    perLoan.forEach(({ l, p, t }) => {
-      const s = bySector.get(l.sector) ?? { p: 0, t: 0, w: 0 };
-      bySector.set(l.sector, { p: s.p + p.score * l.ead, t: s.t + t * l.ead, w: s.w + l.ead });
-    });
-    perLoan = perLoan.map((x) => {
-      const s = bySector.get(x.l.sector)!;
-      return { ...x, p: { ...x.p, score: s.p / s.w }, t: s.t / s.w };
-    });
-  }
-
-  const results: LoanResult[] = perLoan.map(({ l, p, t, h }) => {
-    const dT = CREDIT.betaTransition * t, dP = CREDIT.betaPhysical * p.score * intensification(phys), dM = CREDIT.betaMacro * -gdp;
-    const pdS = l.pd >= 1 ? 1 : clamp(sigmoid(logit(l.pd) + dT + dP + dM), l.pd, 0.999);
-    const covered = Math.min(l.collateralValue * CREDIT.collateralRecovery, l.ead);
-    const baseRecovery = 1 - l.lgd;
-    const lostRecovery = l.ead > 0 ? (covered * h) / l.ead : 0;
-    const lgdS = clamp(Math.max(CREDIT.lgdFloor, 1 - baseRecovery + lostRecovery));
+  const results: LoanResult[] = loans.map((l) => {
+    const p = scores.get(l.id)!;
+    let pdS: number, lgdS: number, trace: BottomUpTrace | undefined, sectorUplift: number | undefined;
+    if (input.approach === 'top-down') {
+      const s = bySector.get(l.sector)!;
+      pdS = l.pd >= 1 ? 1 : clamp(l.pd * (s.pdS / s.pd), l.pd, 0.999);
+      lgdS = clamp(l.lgd + s.lgdUplift, CREDIT.lgdFloor, 1);
+      sectorUplift = s.uplift;
+    } else {
+      ({ pdS, lgdS, trace } = bottomUp(l, G));
+    }
     const stageS = l.stage === 3 || pdS >= CREDIT.stage3Pd ? 3 : l.stage === 2 || (pdS >= l.pd * CREDIT.sicrMultiple && pdS - l.pd >= CREDIT.sicrAbsolute) ? 2 : 1;
     return {
       id: l.id, borrower: l.borrower, sector: l.sector, region: l.region, ead: l.ead,
-      physical: p.score, physicalDrivers: p.drivers, transition: t,
-      pd: l.pd, pdStressed: pdS, lgd: l.lgd, lgdStressed: lgdS, haircut: h,
+      physical: p.score, physicalDrivers: p.drivers, transition: transitionScore(l, G.transition),
+      pd: l.pd, pdStressed: pdS, lgd: l.lgd, lgdStressed: lgdS, haircut: collateralHaircut(l, phys),
       stage: l.stage, stageStressed: stageS,
-      ecl: ecl(l.pd, l.lgd, l.ead, l.stage, l.maturityYears),
-      eclStressed: ecl(pdS, lgdS, l.ead, stageS, l.maturityYears),
-      drivers: { transition: dT, physical: dP, macro: dM },
+      ecl: ecl(l.pd, l.lgd, l.ead), eclStressed: ecl(pdS, lgdS, l.ead),
+      trace, sectorUplift,
     };
   });
 
-  return { input, modelVersion: MODEL_VERSION, results, summary: summarise(results), capital: capitalImpact(results), liquidity: liquidityImpact(results, phys) };
+  return { input, modelVersion: MODEL_VERSION, shocks: G, sectors, results, summary: summarise(results), capital: capitalImpact(results), liquidity: liquidityImpact(results, phys) };
 }
 
 function summarise(rs: LoanResult[]) {

@@ -1,6 +1,6 @@
 // Every model parameter lives here. All values are ILLUSTRATIVE placeholders pending methodology sign-off.
 
-export const MODEL_VERSION = 'climate-credit-0.1.0-illustrative';
+export const MODEL_VERSION = 'climate-credit-0.2.0-illustrative';
 export const HAZARD_DATA_VERSION = 'hazard-grid-demo-2026.11';
 
 export type Hazard = 'flood' | 'drought' | 'heat' | 'coastal';
@@ -74,17 +74,19 @@ export interface Scenario {
   carbonPrice: Record<Horizon, number>;    // USD/tCO2e
   transitionShock: Record<Horizon, number>; // 0–1
   physical: Record<Horizon, number>;        // multiplier on hazard
-  gdpShock: Record<Horizon, number>;        // % deviation of Ghana GDP vs baseline (Ghana calibration)
+  gdpShock: Record<Horizon, number>;        // NGFS regional GDP, % deviation from baseline (before Ghana calibration)
+  inflationShock: Record<Horizon, number>;  // NGFS regional inflation, pp deviation from baseline
+  rateShock: Record<Horizon, number>;       // NGFS regional long-term interest rate, pp deviation from baseline
 }
 
 // Scenario names follow the NGFS framework; numeric paths are ILLUSTRATIVE, not NGFS data.
 export const SCENARIOS: Scenario[] = [
-  { key: 'nz2050', name: 'Net Zero 2050', family: 'Orderly', carbonPrice: { 2030: 150, 2040: 280, 2050: 400 }, transitionShock: { 2030: 0.55, 2040: 0.7, 2050: 0.75 }, physical: { 2030: 1.05, 2040: 1.1, 2050: 1.12 }, gdpShock: { 2030: -1.2, 2040: -1.5, 2050: -1.3 } },
-  { key: 'b2c', name: 'Below 2°C', family: 'Orderly', carbonPrice: { 2030: 90, 2040: 170, 2050: 250 }, transitionShock: { 2030: 0.4, 2040: 0.55, 2050: 0.6 }, physical: { 2030: 1.07, 2040: 1.15, 2050: 1.2 }, gdpShock: { 2030: -0.9, 2040: -1.2, 2050: -1.3 } },
-  { key: 'delayed', name: 'Delayed Transition', family: 'Disorderly', carbonPrice: { 2030: 20, 2040: 300, 2050: 500 }, transitionShock: { 2030: 0.15, 2040: 0.9, 2050: 0.95 }, physical: { 2030: 1.08, 2040: 1.2, 2050: 1.25 }, gdpShock: { 2030: -0.3, 2040: -3.2, 2050: -2.6 } },
-  { key: 'ndc', name: 'Nationally Determined Contributions (NDCs)', family: 'Hot house world', carbonPrice: { 2030: 40, 2040: 70, 2050: 100 }, transitionShock: { 2030: 0.25, 2040: 0.3, 2050: 0.35 }, physical: { 2030: 1.1, 2040: 1.3, 2050: 1.45 }, gdpShock: { 2030: -0.8, 2040: -1.8, 2050: -2.9 } },
-  { key: 'current', name: 'Current Policies', family: 'Hot house world', carbonPrice: { 2030: 10, 2040: 15, 2050: 20 }, transitionShock: { 2030: 0.05, 2040: 0.08, 2050: 0.1 }, physical: { 2030: 1.12, 2040: 1.4, 2050: 1.75 }, gdpShock: { 2030: -1, 2040: -2.6, 2050: -4.8 } },
-  { key: 'fragmented', name: 'Fragmented World', family: 'Too little, too late', carbonPrice: { 2030: 30, 2040: 120, 2050: 220 }, transitionShock: { 2030: 0.3, 2040: 0.6, 2050: 0.7 }, physical: { 2030: 1.12, 2040: 1.35, 2050: 1.65 }, gdpShock: { 2030: -1.4, 2040: -3.4, 2050: -5.2 } },
+  { key: 'nz2050', name: 'Net Zero 2050', family: 'Orderly', carbonPrice: { 2030: 150, 2040: 280, 2050: 400 }, transitionShock: { 2030: 0.55, 2040: 0.7, 2050: 0.75 }, physical: { 2030: 1.05, 2040: 1.1, 2050: 1.12 }, gdpShock: { 2030: -1.2, 2040: -1.5, 2050: -1.3 }, inflationShock: { 2030: 0.6, 2040: 0.4, 2050: 0.2 }, rateShock: { 2030: 0.5, 2040: 0.3, 2050: 0.2 } },
+  { key: 'b2c', name: 'Below 2°C', family: 'Orderly', carbonPrice: { 2030: 90, 2040: 170, 2050: 250 }, transitionShock: { 2030: 0.4, 2040: 0.55, 2050: 0.6 }, physical: { 2030: 1.07, 2040: 1.15, 2050: 1.2 }, gdpShock: { 2030: -0.9, 2040: -1.2, 2050: -1.3 }, inflationShock: { 2030: 0.4, 2040: 0.3, 2050: 0.2 }, rateShock: { 2030: 0.3, 2040: 0.2, 2050: 0.2 } },
+  { key: 'delayed', name: 'Delayed Transition', family: 'Disorderly', carbonPrice: { 2030: 20, 2040: 300, 2050: 500 }, transitionShock: { 2030: 0.15, 2040: 0.9, 2050: 0.95 }, physical: { 2030: 1.08, 2040: 1.2, 2050: 1.25 }, gdpShock: { 2030: -0.3, 2040: -3.2, 2050: -2.6 }, inflationShock: { 2030: 0.1, 2040: 1.6, 2050: 0.9 }, rateShock: { 2030: 0.1, 2040: 1.2, 2050: 0.8 } },
+  { key: 'ndc', name: 'Nationally Determined Contributions (NDCs)', family: 'Hot house world', carbonPrice: { 2030: 40, 2040: 70, 2050: 100 }, transitionShock: { 2030: 0.25, 2040: 0.3, 2050: 0.35 }, physical: { 2030: 1.1, 2040: 1.3, 2050: 1.45 }, gdpShock: { 2030: -0.8, 2040: -1.8, 2050: -2.9 }, inflationShock: { 2030: 0.3, 2040: 0.5, 2050: 0.7 }, rateShock: { 2030: 0.2, 2040: 0.4, 2050: 0.5 } },
+  { key: 'current', name: 'Current Policies', family: 'Hot house world', carbonPrice: { 2030: 10, 2040: 15, 2050: 20 }, transitionShock: { 2030: 0.05, 2040: 0.08, 2050: 0.1 }, physical: { 2030: 1.12, 2040: 1.4, 2050: 1.75 }, gdpShock: { 2030: -1, 2040: -2.6, 2050: -4.8 }, inflationShock: { 2030: 0.2, 2040: 0.6, 2050: 1.1 }, rateShock: { 2030: 0.1, 2040: 0.4, 2050: 0.7 } },
+  { key: 'fragmented', name: 'Fragmented World', family: 'Too little, too late', carbonPrice: { 2030: 30, 2040: 120, 2050: 220 }, transitionShock: { 2030: 0.3, 2040: 0.6, 2050: 0.7 }, physical: { 2030: 1.12, 2040: 1.35, 2050: 1.65 }, gdpShock: { 2030: -1.4, 2040: -3.4, 2050: -5.2 }, inflationShock: { 2030: 0.5, 2040: 1.4, 2050: 1.3 }, rateShock: { 2030: 0.4, 2040: 1.0, 2050: 1.0 } },
 ];
 export const scenarioOf = (k: ScenarioKey) => SCENARIOS.find((s) => s.key === k)!;
 
@@ -106,16 +108,51 @@ export const LOSS_DIST = { simulations: 10000, seed: 20261123, confidence: [0.99
 
 // Bank capital & liquidity (synthetic "Demo Bank Ghana"). The regulatory minimum is configurable.
 export const BANK = {
-  cet1: 1_450_000_000,
-  tier2: 300_000_000,
-  otherRwa: 2_400_000_000,     // market + operational + non-loan credit RWA
+  cet1: 1_900_000_000,
+  tier2: 400_000_000,
+  otherRwa: 3_150_000_000,     // market + operational + non-loan credit RWA
   riskWeight: 1,               // standardised 100% on loans (illustrative)
   carMinimum: 0.13,            // configurable; confirm the current BoG requirement
   taxRate: 0,
-  hqla: 2_400_000_000,
-  deposits: { retail: 7_200_000_000, sme: 2_600_000_000, corporate: 3_400_000_000 },
+  hqla: 3_150_000_000,
+  deposits: { retail: 9_450_000_000, sme: 3_400_000_000, corporate: 4_450_000_000 },
   baseRunOff: { retail: 0.05, sme: 0.1, corporate: 0.25 },
   climateRunOff: { retail: 0.04, sme: 0.08, corporate: 0.06 }, // extra outflow from affected regions/sectors under severe physical stress
-  undrawnLines: 1_100_000_000, baseDrawdown: 0.1, climateDrawdown: 0.15,
+  undrawnLines: 1_450_000_000, baseDrawdown: 0.1, climateDrawdown: 0.15,
   lcrMinimum: 1,
+};
+
+// Climate-to-credit transmission (illustrative, pending methodology sign-off)
+export const TRANSMISSION = {
+  // Bottom-up: borrower cash flows → DSCR → PD band
+  lendingRate: 0.22,              // Ghana lending rate used to build base debt service
+  floatingShare: 0.5,             // share of debt repricing with the long-term rate
+  variableCostShare: 0.6,         // share of operating costs that moves with revenue
+  pricingPower: 0.7,              // share of cost inflation passed on to customers
+  carbonCostPer100: 0.012,         // revenue share lost per USD 100/t for a sector with transition sensitivity 1
+  planRelief: 0.4,                // a credible transition plan cuts carbon cost by 40%
+  floodDepthScale: 2.5,           // metres of 1-in-100-year flood depth at hazard score 1 (until JRC rasters are sampled)
+  floodEventThreshold: 0.6,       // stress applies the 1-in-100-year event where flood hazard × intensity ≥ this
+  businessInterruption: 0.08,     // revenue lost per unit of flood damage fraction
+  climateRevenueLoss: 0.12,        // drought/heat revenue loss per unit of (hazard × vulnerability) × added intensity
+  recoveryShare: 0.5,             // share of damaged collateral value that would have been recovered
+  // DSCR → PD bands (log-linear between anchors)
+  dscrPd: [[0.5, 0.6], [0.8, 0.3], [1.0, 0.15], [1.1, 0.08], [1.25, 0.04], [1.5, 0.02], [2.0, 0.008], [3.0, 0.003]] as [number, number][],
+  sector: {
+    agri: { gdpElasticity: 1.0, cfadsMargin: 0.2 }, mining: { gdpElasticity: 0.8, cfadsMargin: 0.3 }, oilgas: { gdpElasticity: 1.2, cfadsMargin: 0.3 },
+    power: { gdpElasticity: 0.6, cfadsMargin: 0.3 }, renew: { gdpElasticity: 0.5, cfadsMargin: 0.35 }, manuf: { gdpElasticity: 1.3, cfadsMargin: 0.18 },
+    constr: { gdpElasticity: 1.6, cfadsMargin: 0.15 }, realestate: { gdpElasticity: 1.5, cfadsMargin: 0.35 }, trade: { gdpElasticity: 1.4, cfadsMargin: 0.12 },
+    transport: { gdpElasticity: 1.2, cfadsMargin: 0.18 }, services: { gdpElasticity: 1.0, cfadsMargin: 0.25 },
+  } as Record<SectorKey, { gdpElasticity: number; cfadsMargin: number }>,
+  // Top-down: sector satellite model, logit(PD sector stressed) = logit(PD sector) + Σ b·shock
+  topDown: { bGdp: 0.1, bInflation: 0.03, bRate: 0.08, bCarbon: 0.9, bPhysical: 1.6, lgdPhysical: 0.25 },
+};
+
+// JRC-style flood depth–damage curves (depth m → damage fraction). Shaped like the JRC global curves for Africa;
+// replace with the licensed JRC tables before production use.
+export const DEPTH_DAMAGE: Record<'residential' | 'commercial' | 'industrial' | 'agriculture', [number, number][]> = {
+  residential: [[0, 0], [0.5, 0.22], [1, 0.38], [1.5, 0.53], [2, 0.64], [3, 0.82], [4, 0.91], [5, 0.96], [6, 1]],
+  commercial: [[0, 0], [0.5, 0.18], [1, 0.32], [1.5, 0.46], [2, 0.58], [3, 0.76], [4, 0.88], [5, 0.96], [6, 1]],
+  industrial: [[0, 0], [0.5, 0.2], [1, 0.37], [1.5, 0.5], [2, 0.6], [3, 0.76], [4, 0.88], [5, 0.96], [6, 1]],
+  agriculture: [[0, 0], [0.5, 0.24], [1, 0.47], [1.5, 0.74], [2, 0.92], [3, 1]],
 };

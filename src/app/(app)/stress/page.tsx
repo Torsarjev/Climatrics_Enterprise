@@ -24,7 +24,7 @@ export default async function StressPage() {
             </Card>
           : <Card title="New run"><p className="text-sm text-zinc-600">Read-only: auditors can inspect every run and its lineage but cannot start one. Switch to an analyst (Kofi Mensah) at the top right to run a stress test.</p></Card>}
 
-      <Card title="Scenario paths (Ghana calibration)" className="mt-6" note="carbon price USD/t · GDP vs baseline · physical intensity">
+      <Card title="NGFS regional scenario paths (before Ghana calibration)" className="mt-6" note={<a href="/calibration" className="underline">see the Ghana-calibrated values</a>}>
         <Table head={['Scenario', 'Family', ...HORIZONS.map((h) => `${h}`)]} rows={SCENARIOS.map((s) => [
           s.name, s.family,
           ...HORIZONS.map((h) => <span key={h} className="text-xs tabular-nums">${s.carbonPrice[h]} · {s.gdpShock[h]}% · ×{s.physical[h]}</span>),
@@ -34,7 +34,7 @@ export default async function StressPage() {
 
       <Card title="How the scenario reaches the balance sheet" className="mt-6">
         <ol className="grid gap-3 text-sm md:grid-cols-5">
-          {[['Scenario', 'carbon price, GDP, hazard intensity'], ['Counterparty', 'transition score, physical score'], ['PD', 'logit(PD) + βT·T + βP·P + βM·GDP'], ['LGD', 'collateral haircut from hazard at its location'], ['ECL → capital', 'IFRS 9 staging, ECL, VaR, CAR, LCR']].map(([t, s], i) => (
+          {[['Ghana calibration', 'NGFS regional shock × Ghana coefficient'], ['Borrower or sector', 'revenue, costs, collateral · or sector sensitivity'], ['PD', 'bottom-up: CFADS → DSCR → PD band · top-down: sector sensitivities'], ['LGD', 'flood depth → damage curve → lost recovery'], ['ECL → capital', 'one-year ECL, VaR, CAR, LCR']].map(([t, s], i) => (
             <li key={t} className="rounded-md border border-zinc-200 p-3"><p className="font-semibold">{i + 1}. {t}</p><p className="mt-1 text-xs text-zinc-500">{s}</p></li>
           ))}
         </ol>

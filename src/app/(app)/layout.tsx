@@ -12,6 +12,8 @@ const NAV = [
   ['/physical', 'Physical risk & GIS', 'physical'],
   ['/transition', 'Transition risk', 'transition'],
   ['/stress', 'Scenario analysis', 'stress'],
+  ['/calibration', 'Ghana calibration', 'calibration'],
+  ['/compare', 'Top-down vs bottom-up', 'compare'],
   ['/credit', 'Credit risk & ECL', 'credit'],
   ['/capital', 'ICAAP & ILAAP', 'capital'],
   ['/emissions', 'Carbon accounting', 'emissions'],

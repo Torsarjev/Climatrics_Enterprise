@@ -53,7 +53,16 @@ const REGION_TILT: Partial<Record<SectorKey, string[]>> = {
 
 const pick = <T,>(r: () => number, xs: T[]) => xs[Math.floor(r() * xs.length)];
 
-export function generatePortfolio(n = 600, seed = 7): Loan[] {
+export const BOOK_TARGET = 10_000_000_000;
+export const VOLTA_AGRO: Loan = {
+  id: 'GH-200001', borrower: 'Volta Agro Processing Ltd', sector: 'agri', region: 'Volta',
+  lat: 6.0985, lon: 0.6006, geoConfidence: 'gps',
+  ead: 80_000_000, collateralType: 'plant', collateralValue: 96_000_000,
+  maturityYears: 6, pd: 0.025, lgd: 0.35, stage: 1,
+  transitionPlan: false, emissionsIntensity: 460, purpose: 'Cassava and grain processing plant expansion',
+};
+
+export function generatePortfolio(n = 999, seed = 7): Loan[] {
   const r = rng(seed);
   const loans: Loan[] = [];
   const cum = SECTORS.reduce<number[]>((a, s) => [...a, (a.at(-1) ?? 0) + s.weight], []);
@@ -85,7 +94,10 @@ export function generatePortfolio(n = 600, seed = 7): Loan[] {
       purpose: pick(r, PURPOSE[sector.key]),
     });
   }
-  return loans;
+  const k = (BOOK_TARGET - VOLTA_AGRO.ead) / loans.reduce((a, l) => a + l.ead, 0);
+  loans.forEach((l) => { l.ead = Math.round((l.ead * k) / 1000) * 1000; l.collateralValue = Math.round((l.collateralValue * k) / 1000) * 1000; });
+  loans[loans.length - 1].ead += BOOK_TARGET - VOLTA_AGRO.ead - loans.reduce((a, l) => a + l.ead, 0);
+  return [...loans, { ...VOLTA_AGRO }];
 }
 
 export const COLUMNS: (keyof Loan)[] = ['id', 'borrower', 'sector', 'region', 'lat', 'lon', 'geoConfidence', 'ead', 'collateralType', 'collateralValue', 'maturityYears', 'pd', 'lgd', 'stage', 'transitionPlan', 'emissionsIntensity', 'purpose'];

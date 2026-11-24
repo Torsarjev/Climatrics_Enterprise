@@ -6,7 +6,7 @@ import { getStore } from '@netlify/blobs';
 export const onNetlify = !!(process.env.NETLIFY_BLOBS_CONTEXT || process.env.NETLIFY);
 
 const dir = path.join(process.cwd(), '.data');
-const blobs = () => getStore({ name: 'climatrics-demo', consistency: 'strong' });
+const blobs = () => getStore({ name: 'climatrics-demo-v2', consistency: 'strong' });
 
 const timed = async <T,>(label: string, f: () => Promise<T>) => {
   const t = Date.now();

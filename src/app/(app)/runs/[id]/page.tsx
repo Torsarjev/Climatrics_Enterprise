@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { currentUser, getRun, activeLoans } from '@/lib/store';
-import { HAZARDS, scenarioOf, sectorOf } from '@/lib/params';
+import { scenarioOf, sectorOf } from '@/lib/params';
 import { GRADES } from '@/lib/engine';
 import { Badge, Btn, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
 import { LossChart } from '@/components/loss-chart';
 import { ReproduceButton, ReviewPanel } from '@/components/review-panel';
-import { delta, ghs, num, pct, pp, when, s5 } from '@/lib/fmt';
-import { logit } from '@/lib/math';
+import { delta, ghs, pct, pp, when, s5 } from '@/lib/fmt';
+import { Explain } from '@/components/explain';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,15 +35,24 @@ export default async function RunPage({ params, searchParams }: { params: Promis
       </PageHead>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Expected credit loss" value={`${ghs(S.ecl)} → ${ghs(S.eclStressed)}`} sub={`${delta(S.ecl, S.eclStressed)} · +${ghs(S.eclStressed - S.ecl)} provisions`} tone="bad" />
+        <Stat label="One-year ECL (simplified)" value={`${ghs(S.ecl)} → ${ghs(S.eclStressed)}`} sub={`${delta(S.ecl, S.eclStressed)} · +${ghs(S.eclStressed - S.ecl)} provisions`} tone="bad" />
         <Stat label="Weighted PD (performing)" value={`${pct(S.pd, 2)} → ${pct(S.pdStressed, 2)}`} sub={pp(S.pdStressed - S.pd, 2)} tone="warn" />
-        <Stat label="Weighted LGD" value={`${pct(S.lgd)} → ${pct(S.lgdStressed)}`} sub="collateral haircuts from hazards" tone="warn" />
+        <Stat label="Weighted LGD" value={`${pct(S.lgd)} → ${pct(S.lgdStressed)}`} sub="lost recovery on flood-damaged collateral" tone="warn" />
         <Stat label="Capital adequacy ratio" value={`${pct(C.carBefore)} → ${pct(C.carAfter)}`} sub={`minimum ${pct(C.minimum, 0)} (configurable)`} tone={C.carAfter < C.minimum ? 'bad' : 'good'} />
         <Stat label="Credit VaR 99.9% (1y)" value={`${ghs(L.base.var999)} → ${ghs(L.stressed.var999)}`} sub={`CVaR ${ghs(L.stressed.cvar999)}`} />
         <Stat label="Economic capital" value={`${ghs(L.base.economicCapital)} → ${ghs(L.stressed.economicCapital)}`} sub="VaR 99.9 − expected loss" />
         <Stat label="Stage 2 + 3 exposure" value={`${pct((S.stages[1].before + S.stages[2].before) / S.ead)} → ${pct((S.stages[1].after + S.stages[2].after) / S.ead)}`} sub="significant increase in credit risk" tone="warn" />
         <Stat label="Liquidity coverage" value={`${pct(Q.lcrBefore, 0)} → ${pct(Q.lcrAfter, 0)}`} sub={`minimum ${pct(Q.minimum, 0)}`} tone={Q.lcrAfter < Q.minimum ? 'bad' : 'good'} />
       </div>
+
+      <Card title="Ghana-calibrated shocks used in this run" className="mt-6" note={<Link href={`/calibration?scenario=${rec.input.scenario}`} className="underline">calibration method</Link>}>
+        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
+          {[['GDP', `${run.shocks.gdp.toFixed(1)}%`], ['Inflation', `+${run.shocks.inflation.toFixed(1)} pp`], ['Long-term rate', `+${run.shocks.rate.toFixed(1)} pp`], ['Carbon price', `$${run.shocks.carbon.toFixed(0)}/t`], ['Hazard intensity', `×${run.shocks.physical.toFixed(2)}`]].map(([k, v]) => (
+            <div key={k} className="rounded-md bg-zinc-50 px-3 py-2"><p className="text-xs text-zinc-500">{k}</p><p className="font-semibold tabular-nums">{v}</p></div>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">{rec.input.approach === 'bottom-up' ? 'Bottom-up: these shocks move each borrower’s revenue, costs, debt service and collateral, then DSCR sets the PD band.' : 'Top-down: these shocks move each sector’s PD and LGD through sector sensitivities; borrowers inherit their sector’s stress.'} <Link href={`/compare?scenario=${rec.input.scenario}&horizon=${rec.input.horizon}`} className="underline">Compare both approaches</Link>.</p>
+      </Card>
 
       <Card title="Impact by sector" className="mt-6">
         <Table head={['Sector', 'EAD', 'PD before → after', 'ECL before', 'ECL after', 'Change', 'Transition', 'Physical']} align={['l', 'r', 'r', 'r', 'r', 'r', 'r', 'r']}
@@ -90,18 +99,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
         </Card>
         <Card title={`Explain: ${pick.borrower} (${pick.id})`} className="scroll-mt-4" note={pickLoan ? `${pickLoan.region} · ${pickLoan.purpose}` : undefined}>
           <div id="explain" />
-          <Table head={['Step', 'Value']} align={['l', 'r']} rows={[
-            ['Bank PD (input)', pick.pd >= 1 ? 'Default' : pct(pick.pd, 2)],
-            ['Starting log-odds', pick.pd >= 1 ? '—' : num(logit(pick.pd))],
-            [`+ Transition (score ${s5(pick.transition)}/5 · ${num(pick.transition)} × β)`, `+${num(pick.drivers.transition)}`],
-            [`+ Physical (score ${s5(pick.physical)}/5 · ${num(pick.physical)} × intensification × β)`, `+${num(pick.drivers.physical)}`],
-            ['+ Macro (Ghana GDP shock)', `+${num(pick.drivers.macro)}`],
-            [<b key="p">Stressed PD</b>, <b key="v">{pick.pd >= 1 ? 'Default' : `${pct(pick.pd, 2)} → ${pct(pick.pdStressed, 2)}`}</b>],
-            [`LGD (collateral haircut ${pct(pick.haircut)})`, `${pct(pick.lgd)} → ${pct(pick.lgdStressed)}`],
-            ['IFRS 9 stage', `${pick.stage} → ${pick.stageStressed}`],
-            [<b key="e">ECL</b>, <b key="ev">{ghs(pick.ecl)} → {ghs(pick.eclStressed)}</b>],
-          ]} />
-          <p className="mt-3 text-xs text-zinc-500">Physical drivers: {HAZARDS.map((h) => `${h} ${s5(pick.physicalDrivers[h])}`).join(' · ')}{pickLoan && ` · transition plan: ${pickLoan.transitionPlan ? 'yes' : 'no'} · location: ${pickLoan.geoConfidence}`}</p>
+          <Explain r={pick} loan={pickLoan} sector={run.sectors.find((x) => x.key === pick.sector)} />
         </Card>
       </div>
 
