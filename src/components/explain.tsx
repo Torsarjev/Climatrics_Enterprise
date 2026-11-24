@@ -13,7 +13,7 @@ export function Explain({ r, loan, sector }: { r: LoanResult; loan?: Loan; secto
     ['Bank PD → implied DSCR (band table)', `${pct(r.pd, 2)} → ${t.dscr.toFixed(2)}×`],
     ['Revenue (base)', ghs(t.revenue)],
     ['− Ghana GDP shock × sector elasticity', `−${ghs(t.macroLoss)}`],
-    ['− Physical loss (flood downtime, drought, heat)', `−${ghs(t.physicalLoss)}`],
+    ['− Acute flood downtime (chronic heat and rain are in the NGFS GDP path)', `−${ghs(t.physicalLoss)}`],
     ['Revenue (stressed)', ghs(t.revenueS)],
     ['Operating costs (60% variable + Ghana inflation)', `${ghs(t.opex)} → ${ghs(t.opexS)}`],
     ['− Carbon cost (NGFS carbon price)', `−${ghs(t.carbonCost)}`],

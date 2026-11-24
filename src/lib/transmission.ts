@@ -48,14 +48,13 @@ export interface BottomUpTrace {
 }
 
 export function bottomUp(loan: Loan, G: GhanaShocks) {
-  const sec = sectorOf(loan.sector), reg = regionOf(loan.region);
+  const sec = sectorOf(loan.sector);
   const b = baseFinancials(loan);
   const macroLoss = b.revenue * -(T.sector[loan.sector].gdpElasticity * G.gdp) / 100;
   const revenueMacro = b.revenue - macroLoss;
-  const flood = floodAtSite(loan, G.physical);
-  const added = Math.max(0, G.physical - 1);
-  const chronic = ((clamp(reg.hazard.drought * G.physical) * sec.vuln.drought + clamp(reg.hazard.heat * G.physical) * sec.vuln.heat) / 2) * added * T.climateRevenueLoss;
-  const physicalLoss = revenueMacro * clamp(flood.damage * T.businessInterruption + chronic, 0, 0.9);
+  // chronic heat and rainfall damage is already in the NGFS GDP path; only the acute flood event is added here
+  const flood = floodAtSite(loan, G.flood);
+  const physicalLoss = revenueMacro * clamp(flood.damage * T.businessInterruption, 0, 0.9);
   const intensityRel = clamp(loan.emissionsIntensity / sec.carbonIntensity, 0.3, 2);
   const carbonCost = (revenueMacro - physicalLoss) * sec.transition * T.carbonCostPer100 * (G.carbon / 100) * intensityRel * (loan.transitionPlan ? 1 - T.planRelief : 1);
   const revenueS = revenueMacro - physicalLoss;

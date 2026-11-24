@@ -47,7 +47,7 @@ export default async function Overview() {
         <Kpi label="Portfolio exposure" value={ghs(ead)} sub={`${loans.length} facilities · ${dataset.id}`} />
         <Kpi label="High-risk exposure" value={pct(D.highRisk / ead)} sub={`${ghs(D.highRisk)} · physical score ≥ 3.0 of 5, or high-transition sector without a plan`} />
         <Kpi label="Baseline ECL" value={ghs(D.eclBase)} sub="IFRS 9 provisions before climate stress" />
-        <Kpi label="Stressed ECL" value={ghs(D.eclStressed)} sub="Current Policies (hot house) · 2050" />
+        <Kpi label="Stressed ECL" value={ghs(D.eclStressed)} sub={`most severe: ${D.worstLabel}`} />
       </div>
 
       <section className="mt-6 rounded-xl border border-zinc-200 bg-white p-6">

@@ -1,6 +1,7 @@
 import { REGIONS, SectorKey, scenarioOf, sectorOf } from './params';
 import { physicalScore, transitionScore } from './engine';
 import type { Loan } from './portfolio';
+import { ghanaShocks } from './calibration';
 
 export const EXCLUSIONS = [
   ['forced', 'Forced or harmful child labour'],
@@ -34,7 +35,7 @@ export function screen(a: Application) {
     transitionPlan: a.transitionPlan, emissionsIntensity: sec.carbonIntensity, purpose: a.purpose,
   };
   const physicalToday = physicalScore(loan, 1);
-  const physical2050 = physicalScore(loan, scenarioOf('current').physical[2050]);
+  const physical2050 = physicalScore(loan, ghanaShocks('current', 2050).physical);
   const transition = transitionScore(loan, scenarioOf('delayed').transitionShock[2040]);
   const topHazard = Object.entries(physical2050.drivers).sort((x, y) => y[1] - x[1])[0][0];
 

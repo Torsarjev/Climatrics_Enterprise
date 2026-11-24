@@ -29,10 +29,12 @@ function compute(loans: Loan[]) {
   const highRisk = loans.filter((l) => phys.get(l.id)! >= 0.5 || (sectorOf(l.sector).transition >= 0.6 && !l.transitionPlan)).reduce((a, l) => a + l.ead, 0);
   const runs = STRESS_VIEW.map((v) => ({ ...v, run: runCredit(loans, { scenario: v.scenario, horizon: 2050, approach: 'bottom-up' }) }));
   const base = runs[0].run;
+  const worst = runs.reduce((a, b) => (b.run.summary.eclStressed > a.run.summary.eclStressed ? b : a));
   return {
     ead, highRisk, sectors,
     eclBase: base.summary.ecl,
-    eclStressed: runs[2].run.summary.eclStressed,
+    eclStressed: worst.run.summary.eclStressed,
+    worstLabel: `${worst.note} · 2050`,
     car: [{ label: 'Baseline', note: 'before climate stress', value: base.capital.carBefore }, ...runs.map((x) => ({ label: x.label, note: `${x.note} · 2050`, value: x.run.capital.carAfter }))],
     minimum: BANK.carMinimum,
   };

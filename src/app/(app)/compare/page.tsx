@@ -42,7 +42,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
           <span className="mx-2 text-zinc-300">|</span>
           {HORIZONS.map((h) => <Link key={h} href={link(key, h)} className={`rounded-md px-2.5 py-1 ring-1 ${h === horizon ? 'bg-[#1b2c3e] text-white ring-[#1b2c3e]' : 'ring-zinc-300 hover:bg-zinc-100'}`}>{h}</Link>)}
         </div>
-        <p className="mt-3 text-sm text-zinc-600">Ghana shocks for {scenarioOf(key).name} {horizon}: GDP {G.gdp.toFixed(1)}% · inflation +{G.inflation.toFixed(1)} pp · long rate +{G.rate.toFixed(1)} pp · carbon ${G.carbon.toFixed(0)}/t · hazard ×{G.physical.toFixed(2)} · <Link href={`/calibration?scenario=${key}`} className="underline">how these were calibrated</Link></p>
+        <p className="mt-3 text-sm text-zinc-600">Ghana shocks for {scenarioOf(key).name} {horizon}: GDP {G.gdp.toFixed(1)}% · inflation +{G.inflation.toFixed(1)} pp · long rate +{G.rate.toFixed(1)} pp · carbon ${G.carbon.toFixed(0)}/t · extreme rain ×{G.flood.toFixed(2)} · <Link href={`/calibration?scenario=${key}`} className="underline">how these were calibrated</Link></p>
       </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">

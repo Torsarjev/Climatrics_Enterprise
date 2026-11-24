@@ -1,7 +1,8 @@
 import Link from 'next/link';
+import { ghanaShocks, NGFS_RELEASE } from '@/lib/calibration';
 import { currentUser, db } from '@/lib/store';
 import { HORIZONS, SCENARIOS, scenarioOf } from '@/lib/params';
-import { Badge, Card, Illustrative, PageHead, Table } from '@/components/ui';
+import { Badge, Card, PageHead, Table } from '@/components/ui';
 import { RunForm } from '@/components/run-form';
 import { ghs, pct, when } from '@/lib/fmt';
 
@@ -24,12 +25,12 @@ export default async function StressPage() {
             </Card>
           : <Card title="New run"><p className="text-sm text-zinc-600">Read-only: auditors can inspect every run and its lineage but cannot start one. Switch to an analyst (Kofi Mensah) at the top right to run a stress test.</p></Card>}
 
-      <Card title="NGFS regional scenario paths (before Ghana calibration)" className="mt-6" note={<a href="/calibration" className="underline">see the Ghana-calibrated values</a>}>
+      <Card title="Ghana-calibrated NGFS scenarios" className="mt-6" note={<a href="/calibration" className="underline">method and NGFS source values</a>}>
         <Table head={['Scenario', 'Family', ...HORIZONS.map((h) => `${h}`)]} rows={SCENARIOS.map((s) => [
           s.name, s.family,
-          ...HORIZONS.map((h) => <span key={h} className="text-xs tabular-nums">${s.carbonPrice[h]} · {s.gdpShock[h]}% · ×{s.physical[h]}</span>),
+          ...HORIZONS.map((h) => { const g = ghanaShocks(s.key, h); return <span key={h} className="text-xs tabular-nums">GDP {g.gdp.toFixed(1)}% · carbon ${g.carbon.toFixed(0)}/t · rain ×{g.flood.toFixed(2)}</span>; }),
         ])} />
-        <Illustrative>Scenario names follow the NGFS framework. Numeric paths are illustrative placeholders, not NGFS data, pending the methodology team’s Ghana calibration.</Illustrative>
+        <p className="mt-2 text-xs text-zinc-500">Source: {NGFS_RELEASE}; World Bank CCKP Ghana projections. GDP is the extra shortfall over the five years to the horizon, scaled for Ghana.</p>
       </Card>
 
       <Card title="How the scenario reaches the balance sheet" className="mt-6">

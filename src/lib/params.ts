@@ -71,22 +71,17 @@ export type Horizon = (typeof HORIZONS)[number];
 
 export interface Scenario {
   key: ScenarioKey; name: string; family: 'Orderly' | 'Disorderly' | 'Hot house world' | 'Too little, too late';
-  carbonPrice: Record<Horizon, number>;    // USD/tCO2e
-  transitionShock: Record<Horizon, number>; // 0–1
-  physical: Record<Horizon, number>;        // multiplier on hazard
-  gdpShock: Record<Horizon, number>;        // NGFS regional GDP, % deviation from baseline (before Ghana calibration)
-  inflationShock: Record<Horizon, number>;  // NGFS regional inflation, pp deviation from baseline
-  rateShock: Record<Horizon, number>;       // NGFS regional long-term interest rate, pp deviation from baseline
+  transitionShock: Record<Horizon, number>; // 0–1 policy intensity used for screening and transition scores
 }
 
-// Scenario names follow the NGFS framework; numeric paths are ILLUSTRATIVE, not NGFS data.
+// Scenario names follow NGFS Phase V. Macro, carbon and hazard paths come from src/data (NGFS, CCKP) via lib/calibration.
 export const SCENARIOS: Scenario[] = [
-  { key: 'nz2050', name: 'Net Zero 2050', family: 'Orderly', carbonPrice: { 2030: 150, 2040: 280, 2050: 400 }, transitionShock: { 2030: 0.55, 2040: 0.7, 2050: 0.75 }, physical: { 2030: 1.05, 2040: 1.1, 2050: 1.12 }, gdpShock: { 2030: -1.2, 2040: -1.5, 2050: -1.3 }, inflationShock: { 2030: 0.6, 2040: 0.4, 2050: 0.2 }, rateShock: { 2030: 0.5, 2040: 0.3, 2050: 0.2 } },
-  { key: 'b2c', name: 'Below 2°C', family: 'Orderly', carbonPrice: { 2030: 90, 2040: 170, 2050: 250 }, transitionShock: { 2030: 0.4, 2040: 0.55, 2050: 0.6 }, physical: { 2030: 1.07, 2040: 1.15, 2050: 1.2 }, gdpShock: { 2030: -0.9, 2040: -1.2, 2050: -1.3 }, inflationShock: { 2030: 0.4, 2040: 0.3, 2050: 0.2 }, rateShock: { 2030: 0.3, 2040: 0.2, 2050: 0.2 } },
-  { key: 'delayed', name: 'Delayed Transition', family: 'Disorderly', carbonPrice: { 2030: 20, 2040: 300, 2050: 500 }, transitionShock: { 2030: 0.15, 2040: 0.9, 2050: 0.95 }, physical: { 2030: 1.08, 2040: 1.2, 2050: 1.25 }, gdpShock: { 2030: -0.3, 2040: -3.2, 2050: -2.6 }, inflationShock: { 2030: 0.1, 2040: 1.6, 2050: 0.9 }, rateShock: { 2030: 0.1, 2040: 1.2, 2050: 0.8 } },
-  { key: 'ndc', name: 'Nationally Determined Contributions (NDCs)', family: 'Hot house world', carbonPrice: { 2030: 40, 2040: 70, 2050: 100 }, transitionShock: { 2030: 0.25, 2040: 0.3, 2050: 0.35 }, physical: { 2030: 1.1, 2040: 1.3, 2050: 1.45 }, gdpShock: { 2030: -0.8, 2040: -1.8, 2050: -2.9 }, inflationShock: { 2030: 0.3, 2040: 0.5, 2050: 0.7 }, rateShock: { 2030: 0.2, 2040: 0.4, 2050: 0.5 } },
-  { key: 'current', name: 'Current Policies', family: 'Hot house world', carbonPrice: { 2030: 10, 2040: 15, 2050: 20 }, transitionShock: { 2030: 0.05, 2040: 0.08, 2050: 0.1 }, physical: { 2030: 1.12, 2040: 1.4, 2050: 1.75 }, gdpShock: { 2030: -1, 2040: -2.6, 2050: -4.8 }, inflationShock: { 2030: 0.2, 2040: 0.6, 2050: 1.1 }, rateShock: { 2030: 0.1, 2040: 0.4, 2050: 0.7 } },
-  { key: 'fragmented', name: 'Fragmented World', family: 'Too little, too late', carbonPrice: { 2030: 30, 2040: 120, 2050: 220 }, transitionShock: { 2030: 0.3, 2040: 0.6, 2050: 0.7 }, physical: { 2030: 1.12, 2040: 1.35, 2050: 1.65 }, gdpShock: { 2030: -1.4, 2040: -3.4, 2050: -5.2 }, inflationShock: { 2030: 0.5, 2040: 1.4, 2050: 1.3 }, rateShock: { 2030: 0.4, 2040: 1.0, 2050: 1.0 } },
+  { key: 'nz2050', name: 'Net Zero 2050', family: 'Orderly', transitionShock: { 2030: 0.55, 2040: 0.7, 2050: 0.75 } },
+  { key: 'b2c', name: 'Below 2°C', family: 'Orderly', transitionShock: { 2030: 0.4, 2040: 0.55, 2050: 0.6 } },
+  { key: 'delayed', name: 'Delayed Transition', family: 'Disorderly', transitionShock: { 2030: 0.15, 2040: 0.9, 2050: 0.95 } },
+  { key: 'ndc', name: 'Nationally Determined Contributions (NDCs)', family: 'Hot house world', transitionShock: { 2030: 0.25, 2040: 0.3, 2050: 0.35 } },
+  { key: 'current', name: 'Current Policies', family: 'Hot house world', transitionShock: { 2030: 0.05, 2040: 0.08, 2050: 0.1 } },
+  { key: 'fragmented', name: 'Fragmented World', family: 'Too little, too late', transitionShock: { 2030: 0.3, 2040: 0.6, 2050: 0.7 } },
 ];
 export const scenarioOf = (k: ScenarioKey) => SCENARIOS.find((s) => s.key === k)!;
 
@@ -134,7 +129,6 @@ export const TRANSMISSION = {
   floodDepthScale: 2.5,           // metres of 1-in-100-year flood depth at hazard score 1 (until JRC rasters are sampled)
   floodEventThreshold: 0.6,       // stress applies the 1-in-100-year event where flood hazard × intensity ≥ this
   businessInterruption: 0.08,     // revenue lost per unit of flood damage fraction
-  climateRevenueLoss: 0.12,        // drought/heat revenue loss per unit of (hazard × vulnerability) × added intensity
   recoveryShare: 0.5,             // share of damaged collateral value that would have been recovered
   // DSCR → PD bands (log-linear between anchors)
   dscrPd: [[0.5, 0.6], [0.8, 0.3], [1.0, 0.15], [1.1, 0.08], [1.25, 0.04], [1.5, 0.02], [2.0, 0.008], [3.0, 0.003]] as [number, number][],
@@ -145,7 +139,7 @@ export const TRANSMISSION = {
     transport: { gdpElasticity: 1.2, cfadsMargin: 0.18 }, services: { gdpElasticity: 1.0, cfadsMargin: 0.25 },
   } as Record<SectorKey, { gdpElasticity: number; cfadsMargin: number }>,
   // Top-down: sector satellite model, logit(PD sector stressed) = logit(PD sector) + Σ b·shock
-  topDown: { bGdp: 0.1, bInflation: 0.03, bRate: 0.08, bCarbon: 0.9, bPhysical: 1.6, lgdPhysical: 0.25 },
+  topDown: { bGdp: 0.1, bInflation: 0.03, bRate: 0.08, bCarbon: 0.25, bPhysical: 1.6, lgdPhysical: 0.25 },
 };
 
 // JRC-style flood depth–damage curves (depth m → damage fraction). Shaped like the JRC global curves for Africa;

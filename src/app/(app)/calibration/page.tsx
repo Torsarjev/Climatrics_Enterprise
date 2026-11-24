@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { SCENARIOS, ScenarioKey, scenarioOf } from '@/lib/params';
-import { CALIBRATION_VERSION, NGFS_REGION, NGFS_RELEASE, calibrationRows, evidence } from '@/lib/calibration';
+import { CALIBRATION_VERSION, NGFS_REGION, NGFS_RELEASE, VARIABLES, calibrationRows, evidence } from '@/lib/calibration';
 import { WORLD_BANK } from '@/data/worldbank';
 import { Badge, Card, Illustrative, PageHead, Table } from '@/components/ui';
 import { CalibrationChart } from '@/components/calibration-chart';
 
 export const dynamic = 'force-dynamic';
 
-const fmt = (v: number, unit: string) => (unit.startsWith('USD') ? `$${v.toFixed(0)}` : unit.startsWith('×') ? `×${v.toFixed(2)}` : `${v > 0 ? '+' : ''}${v.toFixed(2)}${unit.startsWith('%') ? '%' : ' pp'}`);
+const fmt = (v: number, unit: string) => (unit.startsWith('US$') ? `$${v.toFixed(0)}` : unit.startsWith('×') ? `×${v.toFixed(2)}` : `${v > 0 ? '+' : ''}${v.toFixed(2)}${unit.startsWith('%') ? '%' : ' pp'}`);
 
 export default async function CalibrationPage({ searchParams }: { searchParams: Promise<{ scenario?: string }> }) {
   const { scenario } = await searchParams;
@@ -27,7 +27,7 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
         <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm md:grid-cols-3">
           <div><dt className="text-zinc-500">NGFS release</dt><dd>{NGFS_RELEASE}</dd></div>
           <div><dt className="text-zinc-500">Region</dt><dd>{NGFS_REGION}</dd></div>
-          <div><dt className="text-zinc-500">Calibration version</dt><dd>{CALIBRATION_VERSION} · <Badge tone="amber">illustrative, pending validation</Badge></dd></div>
+          <div><dt className="text-zinc-500">Calibration version</dt><dd>{CALIBRATION_VERSION} · <Badge tone="amber">NGFS data · coefficients pending validation</Badge></dd></div>
         </dl>
       </Card>
 
@@ -54,9 +54,10 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
         <div className="mb-3 flex flex-wrap gap-2 text-sm">
           {SCENARIOS.map((s) => <Link key={s.key} href={`/calibration?scenario=${s.key}`} className={`rounded-md px-2.5 py-1 ring-1 ${s.key === key ? 'bg-[#1b2c3e] text-white ring-[#1b2c3e]' : 'ring-zinc-300 hover:bg-zinc-100'}`}>{s.name}</Link>)}
         </div>
-        <Table head={['Year', 'Variable', 'Regional shock', 'Ghana coefficient', 'Calibrated Ghana shock', 'Methodology', 'Validation status', 'Version']} align={['l', 'l', 'r', 'r', 'r', 'l', 'l', 'l']}
-          rows={rows.map((r) => [r.year, r.variable, fmt(r.regional, r.unit), r.coefficient.toFixed(2), <b key="g">{fmt(r.ghana, r.unit)}</b>, <span key="m" className="text-xs">{r.method}</span>, <span key="s" className="text-xs">{r.status}</span>, r.version])} />
-        <Illustrative>Regional NGFS values are placeholders until the official release is loaded from the IIASA NGFS Scenario Explorer. Coefficients are computed from real World Bank data; the long-term rate coefficient is expert judgement. All values await GCB methodology sign-off.</Illustrative>
+        <Table head={['Year', 'Variable', 'NGFS / CCKP source value', 'Regional shock', 'Ghana coefficient', 'Calibrated Ghana shock', 'Validation status', 'Version']} align={['l', 'l', 'l', 'r', 'r', 'r', 'l', 'l']}
+          rows={rows.map((r) => [r.year, r.variable, <span key="src" className="text-xs">{r.source}</span>, fmt(r.regional, r.unit), r.coefficient.toFixed(2), <b key="g">{fmt(r.ghana, r.unit)}</b>, <span key="s" className="text-xs">{r.status}</span>, r.version])} />
+        <Table head={['Variable', 'Methodology']} rows={(Object.values(VARIABLES)).map((v) => [v.label, <span key="m" className="text-xs">{v.method}</span>])} />
+        <Illustrative>Regional values are official NGFS Phase V data (NiGEM v1.24.2 Africa, GCAM 6.0 Western Africa) and World Bank CCKP projections for Ghana, received from the Climatrics team on 24 November 2026. Ghana coefficients are computed from World Bank data; the long-term rate coefficient is expert judgement. All values await GCB methodology sign-off.</Illustrative>
       </Card>
     </>
   );

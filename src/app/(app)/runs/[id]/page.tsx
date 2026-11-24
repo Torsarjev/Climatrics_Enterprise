@@ -47,7 +47,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
 
       <Card title="Ghana-calibrated shocks used in this run" className="mt-6" note={<Link href={`/calibration?scenario=${rec.input.scenario}`} className="underline">calibration method</Link>}>
         <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
-          {[['GDP', `${run.shocks.gdp.toFixed(1)}%`], ['Inflation', `+${run.shocks.inflation.toFixed(1)} pp`], ['Long-term rate', `+${run.shocks.rate.toFixed(1)} pp`], ['Carbon price', `$${run.shocks.carbon.toFixed(0)}/t`], ['Hazard intensity', `×${run.shocks.physical.toFixed(2)}`]].map(([k, v]) => (
+          {[['GDP', `${run.shocks.gdp.toFixed(1)}%`], ['Inflation', `+${run.shocks.inflation.toFixed(1)} pp`], ['Long-term rate', `+${run.shocks.rate.toFixed(1)} pp`], ['Carbon price', `$${run.shocks.carbon.toFixed(0)}/t`], ['Extreme rainfall', `×${run.shocks.flood.toFixed(2)}`]].map(([k, v]) => (
             <div key={k} className="rounded-md bg-zinc-50 px-3 py-2"><p className="text-xs text-zinc-500">{k}</p><p className="font-semibold tabular-nums">{v}</p></div>
           ))}
         </div>
