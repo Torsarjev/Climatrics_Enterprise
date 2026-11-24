@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { activeLoans, screenRuns } from '@/lib/store';
 import { REGIONS, sectorOf } from '@/lib/params';
 import { assessPortfolio, hazardEvidence, hazardSource, HIGH_PHYSICAL_RISK, MATERIAL_HAZARD, remediationShortlist } from '@/lib/physical-risk';
-import { Bars, btnClass, Card, PageHead, Stat, Table } from '@/components/ui';
+import { Bars, Card, PageHead, Stat, Table } from '@/components/ui';
 import { RiskMap } from '@/components/risk-map-lazy';
-import { ghs, pct } from '@/lib/fmt';
+import { BorrowerSelector } from '@/components/borrower-selector';
+import { transitionScore } from '@/lib/engine';
+import { ghs, pct, to5 } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +18,9 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
   const { policy, facilities, borrowers } = assessPortfolio(loans, await screenRuns(), dataset.id);
   const requested = (await searchParams).borrower;
   const selected = requested ? borrowers.find((item) => item.id === requested) : borrowers[0];
+  const transitionForDisplay = selected?.facilities.map(({ loan, transition }) => transition?.score ?? to5(transitionScore(loan, 1))) ?? [];
+  const displayedTransition = selected ? Math.max(...transitionForDisplay) : 1;
+  const displayedOverall = selected?.overall ?? Math.max(selected?.physical ?? 1, displayedTransition);
   const actions = selected ? remediationShortlist(selected) : [];
   const ead = borrowers.reduce((sum, item) => sum + item.ead, 0);
   const sumExposure = (profiles: typeof borrowers) => profiles.reduce((sum, profile) => sum + profile.ead, 0);
@@ -51,29 +56,32 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
 
       <section id="borrower-risk" className="mt-6 scroll-mt-4">
         <Card title="Borrower risk profile">
-          <form action="/physical#borrower-risk" method="get" className="mb-5 flex flex-wrap items-end gap-3">
-            <label className="min-w-0 text-sm font-medium">Borrower or facility
-              <select name="borrower" defaultValue={selected?.id ?? ''} className="mt-1 block max-w-full rounded-md border border-zinc-300 bg-white px-3 py-2">
-                {!selected && <option value="" disabled>Select a borrower</option>}
-                {[...borrowers].sort((a, b) => a.name.localeCompare(b.name)).map((item) => (
-                  <option key={item.id} value={item.id}>{item.name} · {item.facilities.map((facility) => facility.loan.id).join(', ')}</option>
-                ))}
-              </select>
-            </label>
-            <button className={btnClass} disabled={!borrowers.length}>Open profile</button>
-          </form>
+          <BorrowerSelector selected={selected?.id ?? ''} options={[...borrowers].sort((a, b) => a.name.localeCompare(b.name)).map((item) => ({
+            id: item.id, label: `${item.name} · ${item.facilities.map((facility) => facility.loan.id).join(', ')}`,
+          }))} />
           {selected ? (
             <>
               <h3 className="text-lg font-semibold">{selected.name}</h3>
-              <p className="mt-1 text-sm text-zinc-600">{ghs(selected.ead)} outstanding · {selected.facilities.length} {selected.facilities.length === 1 ? 'facility' : 'facilities'}{selected.id.startsWith('facility:') ? ' · facility-level profile pending a borrower ID' : ''}</p>
-              <div className="my-4 grid gap-3 sm:grid-cols-3">
-                <Stat label="Physical risk" value={scoreLabel(selected.physical)} sub={selected.fullyLocated ? 'Sites verified in the extract · modelled hazards' : 'Indicative · location proxies used'} />
-                <Stat label="Approved transition risk" value={scoreLabel(selected.transition)} sub="Engine I · requires approval and verified supporting evidence" />
-                <Stat label="Overall climate risk" value={scoreLabel(selected.overall)} sub={policy ? policy.label : 'GCB aggregation policy reference required'} />
+              <p className="mt-1 text-sm text-zinc-600">{ghs(selected.ead)} outstanding · {selected.facilities.length} {selected.facilities.length === 1 ? 'facility' : 'facilities'}{selected.id.startsWith('facility:') ? ' · facility-level profile' : ''}</p>
+              <div className="my-4 grid gap-3 sm:grid-cols-3" aria-live="polite">
+                {[
+                  { label: 'Physical risk', score: selected.physical, source: selected.fullyLocated ? 'Modelled hazards at verified locations' : 'Indicative · location proxies used' },
+                  { label: 'Transition risk', score: displayedTransition, source: selected.transition === null ? 'Demo estimate · calculated from loan data and available verified scores' : 'Approved · verified Engine I assessment' },
+                  { label: 'Overall climate risk', score: displayedOverall, source: selected.overall === null ? 'Demo estimate · higher of physical and transition scores' : `GCB policy · ${policy?.reference}` },
+                ].map(({ label, score, source }) => (
+                  <div key={label} className="rounded-xl border border-lime-300 bg-lime-50 p-4 shadow-sm">
+                    <p className="text-sm font-semibold text-lime-950">{label}</p>
+                    <p className="my-2 text-2xl font-semibold tabular-nums text-slate-950">{scoreLabel(score)}</p>
+                    <div aria-hidden="true" className="mb-3 h-2 overflow-hidden rounded-full bg-lime-200">
+                      <div className="h-full rounded-full bg-lime-600 transition-[width] motion-reduce:transition-none" style={{ width: `${score * 20}%` }} />
+                    </div>
+                    <p className="text-sm text-lime-950">{source}</p>
+                  </div>
+                ))}
               </div>
-              <p className="mb-4 text-sm text-zinc-600">The highest applicable site score determines the physical component. The highest approved facility transition score determines the transition component. Overall scoring requires both components, verified locations, and a configured GCB policy{policy ? ` · ${policy.reference}` : ''}.</p>
-              <Table head={['Facility', 'Outstanding', 'Physical risk', 'Approved transition', 'Engine I source']} rows={selected.facilities.map((facility) => [
-                facility.loan.id, ghs(facility.loan.ead), scoreLabel(facility.physical), scoreLabel(facility.transition?.score ?? null),
+              <p className="mb-4 text-sm text-zinc-600">The physical score uses the highest applicable site score. The transition score uses the highest facility score. Where verified transition scores are unavailable, the demo uses the loan’s sector sensitivity, emissions intensity and transition plan to calculate an estimate. Portfolio approval coverage counts verified scores.</p>
+              <Table head={['Facility', 'Outstanding', 'Physical risk', 'Transition risk', 'Engine I source']} rows={selected.facilities.map((facility, index) => [
+                facility.loan.id, ghs(facility.loan.ead), scoreLabel(facility.physical), `${scoreLabel(transitionForDisplay[index])}${facility.transition ? ' · verified' : ' · demo estimate'}`,
                 facility.transition ? <Link key="source" href={`/screening/${facility.transition.runId}#review`} className="underline">{facility.transition.runId} · {facility.transition.evidence}</Link>
                   : facility.latestRun ? <Link key="source" href={`/screening/${facility.latestRun}`} className="underline">Open assessment {facility.latestRun}</Link>
                     : <Link key="source" href={{ pathname: '/screening', query: { facility: facility.loan.id } }} className="underline">Open Engine I questionnaire</Link>,
