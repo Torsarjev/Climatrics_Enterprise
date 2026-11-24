@@ -14,6 +14,10 @@ npm install
 npm run build && npx next start -p 3470   # open http://localhost:3470
 ```
 
+## Deploy to Netlify
+
+`netlify.toml` builds with Node 24. On Netlify, data (datasets, runs, approvals, audit trail) is kept in Netlify Blobs; locally it is kept in `.data/`. Set these environment variables on the site: `SESSION_SECRET` (a long random string) and `DEMO_PASSWORD`.
+
 ## Sign in
 
 Three demo accounts, one per role: `kofi.mensah@climatrics.demo` (analyst: loads data, runs tests), `ama.owusu@climatrics.demo` (approver) and `yaw.boateng@climatrics.demo` (auditor, read-only). The password is shared with the team; set `DEMO_PASSWORD` to change it, and `SESSION_SECRET` to fix the session-signing key (otherwise one is generated in `.data/`). Five wrong passwords lock an account for 15 minutes. SSO and MFA are planned for production, not built.

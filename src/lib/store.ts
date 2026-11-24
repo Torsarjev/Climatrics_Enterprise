@@ -1,6 +1,4 @@
 import 'server-only';
-import fs from 'fs';
-import path from 'path';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { SESSION_COOKIE, readSession } from './auth';
@@ -10,6 +8,7 @@ import { runStress, RunInput, StressRun } from './engine';
 import { Application, ScreeningResult, screen } from './screening';
 import * as P from './params';
 import { sha256 } from './math';
+import { onNetlify, readText, writeText } from './kv';
 
 export const USERS = [
   { id: 'kofi', name: 'Kofi Mensah', role: 'Climate Risk Analyst', can: ['run', 'ingest'] },
@@ -29,20 +28,19 @@ export interface AuditEvent { at: string; by: string; action: string; target: st
 export interface ScreeningRecord { id: string; at: string; by: string; app: Application; result: ScreeningResult }
 interface Db { datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenings?: ScreeningRecord[] }
 
-const dir = path.join(process.cwd(), '.data');
-const file = path.join(dir, 'store.json');
 const g = globalThis as unknown as { __db?: Db; __loans?: Map<string, Loan[]>; __runs?: Map<string, StressRun> };
 g.__loans ??= new Map();
 g.__runs ??= new Map();
 
-const save = (db: Db) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, JSON.stringify(db, null, 1)); };
+const save = async (db: Db) => { if (!onNetlify) g.__db = db; await writeText('store.json', JSON.stringify(db, null, 1)); };
 const now = () => new Date().toISOString();
 
 export const paramsHash = () => sha256(JSON.stringify({ v: P.MODEL_VERSION, h: P.HAZARD_DATA_VERSION, R: P.REGIONS, S: P.SECTORS, C: P.COLLATERAL, SC: P.SCENARIOS, CR: P.CREDIT, L: P.LOSS_DIST, B: P.BANK }));
 
 async function loadDataset(db: Db, id: string, csv?: string) {
   if (g.__loans!.has(id)) return g.__loans!.get(id)!;
-  const text = csv ?? fs.readFileSync(path.join(dir, `${id}.csv`), 'utf8');
+  const text = csv ?? (await readText(`${id}.csv`));
+  if (text == null) throw new Error(`Dataset ${id} is missing from storage`);
   const loans = ingestCsv(text).accepted;
   g.__loans!.set(id, loans);
   return loans;
@@ -52,8 +50,7 @@ async function addDataset(db: Db, name: string, csv: string, by: string) {
   const res = ingestCsv(csv);
   const hash = await sha256(csv);
   const id = `DS-${hash.slice(0, 8)}`;
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, `${id}.csv`), csv);
+  await writeText(`${id}.csv`, csv);
   if (!db.datasets.some((d) => d.id === id)) db.datasets.unshift({ id, name, hash, uploadedAt: now(), by, control: res.control, rejected: res.rejected, warnings: res.warnings });
   db.activeDataset = id;
   g.__loans!.set(id, res.accepted);
@@ -62,15 +59,17 @@ async function addDataset(db: Db, name: string, csv: string, by: string) {
 }
 
 export async function db(): Promise<Db> {
-  if (g.__db) return g.__db;
-  if (fs.existsSync(file)) g.__db = JSON.parse(fs.readFileSync(file, 'utf8')) as Db;
-  else {
-    const fresh: Db = { datasets: [], activeDataset: '', runs: [], audit: [] };
-    await addDataset(fresh, 'Loan book extract · 30 Sep 2026 (synthetic)', demoExtract(), 'system');
-    save(fresh);
-    g.__db = fresh;
+  if (!onNetlify && g.__db) return g.__db;
+  const text = await readText('store.json');
+  if (text) {
+    const loaded = JSON.parse(text) as Db;
+    if (!onNetlify) g.__db = loaded;
+    return loaded;
   }
-  return g.__db!;
+  const fresh: Db = { datasets: [], activeDataset: '', runs: [], audit: [] };
+  await addDataset(fresh, 'Loan book extract · 30 Sep 2026 (synthetic)', demoExtract(), 'system');
+  await save(fresh);
+  return fresh;
 }
 
 export async function sessionUser(): Promise<User | null> {
@@ -87,7 +86,7 @@ export async function currentUser(): Promise<User> {
 export async function audit(by: string, action: string, target: string, detail?: string) {
   const d = await db();
   d.audit.unshift({ at: now(), by, action, target, detail });
-  save(d);
+  await save(d);
 }
 
 export async function activeLoans() {
@@ -99,7 +98,7 @@ export async function ingest(name: string, csv: string) {
   const d = await db(), u = await currentUser();
   if (!u.can.includes('ingest' as never)) throw new Error('Your role cannot load data');
   const id = await addDataset(d, name, csv, u.name);
-  save(d);
+  await save(d);
   return id;
 }
 
@@ -128,7 +127,7 @@ export async function createRun(input: RunInput) {
   d.runs.unshift(rec);
   g.__runs!.set(id, run);
   d.audit.unshift({ at: now(), by: u.name, action: 'run.created', target: id, detail: `${P.scenarioOf(input.scenario).name} · ${input.horizon} · ${input.approach} · dataset ${dataset.id}` });
-  save(d);
+  await save(d);
   return id;
 }
 
@@ -139,7 +138,7 @@ export async function reproduce(id: string) {
   const [o, p] = [await outHash(run), await paramsHash()];
   const ok = o === rec.outputHash && p === rec.paramsHash;
   d.audit.unshift({ at: now(), by: u.name, action: 'run.reproduced', target: id, detail: ok ? 'Output hash matches: result reproduced exactly' : 'MISMATCH: inputs or parameters have changed' });
-  save(d);
+  await save(d);
   return { ok, outputHash: o, paramsHash: p };
 }
 
@@ -157,13 +156,13 @@ export async function review(id: string, action: 'submit' | 'approve' | 'reject'
     rec.status = action === 'approve' ? 'approved' : 'rejected'; rec.reviewedBy = u.name; rec.reviewedAt = now(); rec.note = note;
   }
   d.audit.unshift({ at: now(), by: u.name, action: `run.${action === 'submit' ? 'submitted' : action === 'approve' ? 'approved' : 'rejected'}`, target: id, detail: note });
-  save(d);
+  await save(d);
 }
 
 export async function logView(action: string, target: string, detail?: string) {
   const d = await db(), u = await currentUser();
   d.audit.unshift({ at: now(), by: u.name, action, target, detail });
-  save(d);
+  await save(d);
 }
 
 export async function recordScreening(app: Application) {
@@ -174,6 +173,6 @@ export async function recordScreening(app: Application) {
   const id = `SCR-${String(d.screenings.length + 1).padStart(4, '0')}`;
   d.screenings.unshift({ id, at: now(), by: u.name, app, result });
   d.audit.unshift({ at: now(), by: u.name, action: 'screening.recorded', target: id, detail: `${app.borrower} · category ${result.category} · ${result.decision}` });
-  save(d);
+  await save(d);
   return id;
 }

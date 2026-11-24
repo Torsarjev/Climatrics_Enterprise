@@ -2,6 +2,7 @@ import 'server-only';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { onNetlify } from './kv';
 
 export const SESSION_COOKIE = 'clima_session';
 const SESSION_HOURS = 8;
@@ -19,6 +20,7 @@ export const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? 'Climatrics#2026';
 const dir = path.join(process.cwd(), '.data');
 function secret() {
   if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  if (onNetlify) return crypto.createHash('sha256').update(`climatrics-session:${DEMO_PASSWORD}`).digest('hex');
   const f = path.join(dir, 'session.key');
   if (!fs.existsSync(f)) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(f, crypto.randomBytes(32).toString('hex'), { mode: 0o600 }); }
   return fs.readFileSync(f, 'utf8');
