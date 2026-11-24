@@ -8,6 +8,7 @@ import { LossChart } from '@/components/loss-chart';
 import { ReproduceButton, ReviewPanel } from '@/components/review-panel';
 import { delta, ghs, pct, pp, when, s5 } from '@/lib/fmt';
 import { Explain } from '@/components/explain';
+import { VOLTA_AGRO } from '@/lib/portfolio';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,8 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   const S = run.summary, L = run.lossDist, C = run.capital, Q = run.liquidity;
   const sc = scenarioOf(rec.input.scenario);
   const top = [...run.results].sort((a, b) => b.eclStressed - b.ecl - (a.eclStressed - a.ecl)).slice(0, 10);
-  const pick = run.results.find((r) => r.id === (loanId ?? top[0].id))!;
+  const worked = run.results.find((r) => r.id === VOLTA_AGRO.id);
+  const pick = run.results.find((r) => r.id === loanId) ?? worked ?? top[0];
   const pickLoan = loans.find((l) => l.id === pick.id);
 
   return (
@@ -93,6 +95,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1.1fr]">
         <Card title="Largest ECL increases" note="click to explain">
+          {worked && <p className="mb-3 text-sm"><Link href={`/runs/${rec.id}?loan=${worked.id}#explain`} className={`underline ${pick.id === worked.id ? 'font-semibold' : ''}`}>{worked.borrower}</Link> <span className="text-zinc-500">· worked example for the single workflow</span></p>}
           <Table head={['Borrower', 'Sector', 'ECL change']} align={['l', 'l', 'r']} rows={top.map((r) => [
             <Link key="l" href={`/runs/${rec.id}?loan=${r.id}#explain`} className={`underline ${r.id === pick.id ? 'font-semibold' : ''}`}>{r.borrower}</Link>, sectorOf(r.sector as never).name, `+${ghs(r.eclStressed - r.ecl)}`,
           ])} />
