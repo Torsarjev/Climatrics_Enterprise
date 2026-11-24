@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { mfaRequired } from '@/lib/auth';
 import { currentUser } from '@/lib/store';
 import { logoutAction } from '@/app/actions';
 import { NavLinks } from '@/components/nav-links';
@@ -40,8 +41,8 @@ export default async function AppLayout({ children }: Readonly<{ children: React
             </Link>
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <span className="hidden text-slate-200 md:inline">Prepared for GCB Bank | Demo environment</span>
-              <span className="hidden items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300 md:inline-flex" title="Password sign-in with signed 8-hour session and lockout. SSO and MFA are planned for production.">● Signed in · SSO/MFA planned</span>
-              <span className="text-right leading-tight" data-user={user.id}><span className="block font-medium">{user.name}</span><span className="block text-xs text-slate-300">{user.role}</span></span>
+              <span className="hidden items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300 md:inline-flex" title={mfaRequired ? 'Signed in with password and authenticator code (TOTP). Signed 8-hour session with lockout. SSO through GCB’s identity provider in production.' : 'MFA is switched off on this server (MFA_MODE=off).'}>● Signed in · {mfaRequired ? 'MFA verified' : 'MFA off'}</span>
+              <Link href="/account" className="text-right leading-tight hover:underline" data-user={user.id}><span className="block font-medium">{user.name}</span><span className="block text-xs text-slate-300">{user.role}</span></Link>
               <form action={logoutAction}><button className="rounded-md px-3 py-1.5 text-sm text-white ring-1 ring-white/30 hover:bg-white/10" data-action="logout">Sign out</button></form>
             </div>
           </div>

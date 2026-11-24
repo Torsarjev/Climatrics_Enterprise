@@ -45,9 +45,10 @@ export function lockedFor(email: string) {
 export function recordFail(email: string) {
   const k = email.toLowerCase(), f = fails.get(k) ?? { n: 0 };
   f.n += 1;
-  if (f.n >= MAX_FAILS) { f.until = Date.now() + LOCK_MINUTES * 60000; f.n = 0; }
   fails.set(k, f);
-  return MAX_FAILS - f.n;
+  if (f.n < MAX_FAILS) return MAX_FAILS - f.n;
+  f.until = Date.now() + LOCK_MINUTES * 60000; f.n = 0;
+  return 0;
 }
 export const clearFails = (email: string) => fails.delete(email.toLowerCase());
 
@@ -67,4 +68,61 @@ export function readSession(token?: string) {
   if (mac.length !== good.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(good))) return null;
   if (Number(exp) < Date.now()) return null;
   return id;
+}
+
+export const MFA_COOKIE = 'clima_mfa';
+export const mfaRequired = process.env.MFA_MODE !== 'off';
+const MFA_MINUTES = 5;
+const ISSUER = 'ClimaTRICs';
+
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32(buf: Buffer) {
+  let bits = '', out = '';
+  for (const b of buf) bits += b.toString(2).padStart(8, '0');
+  for (let i = 0; i + 5 <= bits.length; i += 5) out += B32[parseInt(bits.slice(i, i + 5), 2)];
+  return out;
+}
+
+// Derived from the session secret so every server instance agrees without storing secrets.
+const totpKey = (userId: string) => crypto.createHmac('sha256', secret()).update(`totp:${userId}`).digest().subarray(0, 20);
+export const totpSecret = (userId: string) => base32(totpKey(userId));
+export const otpauthUri = (userId: string, email: string) =>
+  `otpauth://totp/${encodeURIComponent(`${ISSUER}:${email}`)}?secret=${totpSecret(userId)}&issuer=${ISSUER}&algorithm=SHA1&digits=6&period=30`;
+
+function hotp(key: Buffer, counter: number) {
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(counter));
+  const h = crypto.createHmac('sha1', key).update(msg).digest();
+  const o = h[h.length - 1] & 0xf;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0');
+}
+
+const lastStep = new Map<string, number>();
+export function verifyTotp(userId: string, code: string) {
+  const c = code.replace(/\s/g, '');
+  if (!/^\d{6}$/.test(c)) return false;
+  const key = totpKey(userId), now = Math.floor(Date.now() / 30000);
+  for (const step of [now, now - 1, now + 1]) {
+    const good = hotp(key, step);
+    if (crypto.timingSafeEqual(Buffer.from(c), Buffer.from(good))) {
+      if (step <= (lastStep.get(userId) ?? -1)) return false;
+      lastStep.set(userId, step);
+      return true;
+    }
+  }
+  return false;
+}
+
+export function createMfaPending(userId: string) {
+  const data = `mfa:${userId}.${Date.now() + MFA_MINUTES * 60000}`;
+  return { token: `${data}.${sign(data)}`, maxAge: MFA_MINUTES * 60 };
+}
+export function readMfaPending(token?: string) {
+  if (!token) return null;
+  const [pre, exp, mac] = token.split('.');
+  if (!pre?.startsWith('mfa:') || !exp || !mac) return null;
+  const good = sign(`${pre}.${exp}`);
+  if (mac.length !== good.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(good))) return null;
+  if (Number(exp) < Date.now()) return null;
+  return pre.slice(4);
 }

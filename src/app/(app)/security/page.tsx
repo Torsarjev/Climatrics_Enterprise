@@ -3,7 +3,8 @@ import { Badge, Card, PageHead, Table } from '@/components/ui';
 
 const LIVE = [
   ['Authentication', 'Named accounts; passwords hashed with scrypt; signed (HMAC-SHA256) session cookie, HttpOnly, SameSite, Secure over HTTPS, 8-hour expiry', 'Sign in / sign out'],
-  ['Brute-force protection', '5 failed attempts lock the account for 15 minutes', 'Login page message'],
+  ['Multi-factor authentication', 'Password plus a 6-digit time-based code (TOTP, RFC 6238) from Microsoft or Google Authenticator; QR enrolment on first sign-in; used codes cannot be replayed; the 5-minute step between password and code is a separate signed token', 'Sign in · Your account'],
+  ['Brute-force protection', '5 failed password or code attempts lock the account for 15 minutes', 'Login page message'],
   ['Authorisation', 'Role checked on the server for every action and API call: analyst runs and loads data, approver approves, auditor is read-only', 'Sign in as Yaw and try to run'],
   ['Maker-checker', 'The person who submits a run or screening cannot approve it; approvals need a note', 'Credit risk & ECL · Screening'],
   ['Audit trail', 'Every sign-in, data load, run, screening, approval and export is logged with user and time; CSV export', 'Model governance'],
@@ -16,7 +17,7 @@ const LIVE = [
 
 const PLANNED = [
   ['Single sign-on', 'SAML 2.0 / OIDC with GCB’s identity provider (e.g. Microsoft Entra ID); no local passwords', 'Phase 1'],
-  ['Multi-factor authentication', 'Enforced through GCB’s identity provider; step-up for approvals and exports', 'Phase 1'],
+  ['MFA through SSO', 'MFA moves to GCB’s identity provider so the bank’s own policy applies; step-up for approvals and exports', 'Phase 1'],
   ['Encryption at rest', 'AES-256 on database and object storage; keys in a KMS/HSM under GCB custody where required', 'Phase 1'],
   ['Network isolation', 'Private subnets, WAF in front of the API gateway, no public database endpoint, IP allow-listing for integrations', 'Phase 1'],
   ['Secrets vault', 'Managed vault with rotation; service identities instead of shared keys', 'Phase 1'],

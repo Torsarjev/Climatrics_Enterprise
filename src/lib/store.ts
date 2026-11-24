@@ -32,7 +32,7 @@ export interface ScreenRunRecord {
   status: 'draft' | 'submitted' | 'approved' | 'escalated' | 'returned';
   verifiedEvidence?: string[]; submittedBy?: string; reviewedBy?: string; reviewedAt?: string; note?: string;
 }
-interface Db { datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[] }
+interface Db { datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
 
 const g = globalThis as unknown as { __db?: Db; __loans?: Map<string, Loan[]>; __runs?: Map<string, StressRun> };
 g.__loans ??= new Map();
@@ -177,6 +177,9 @@ export const effectiveInput = (r: ScreenRunRecord): ScreenInput => ({
   ...r.input,
   evidence: Object.fromEntries(Object.entries(r.input.evidence).map(([k, v]) => [k, r.verifiedEvidence?.includes(k) && v.status !== 'missing' ? { ...v, status: 'verified' as const } : v])),
 });
+
+export async function mfaEnrolledAt(id: string) { return (await db()).mfa?.[id] ?? null; }
+export async function setMfaEnrolled(id: string) { const d = await db(); d.mfa = { ...(d.mfa ?? {}), [id]: now() }; await save(d); }
 
 export async function screenRuns() { return (await db()).screenRuns ?? []; }
 export async function getScreenRun(id: string) {

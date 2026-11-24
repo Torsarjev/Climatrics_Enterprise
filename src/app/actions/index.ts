@@ -3,9 +3,9 @@
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { USERS, attachEvidence, audit, createRun, createScreenRun, ingest, reproduce, review, reviewScreenRun, sessionUser } from '@/lib/store';
+import { USERS, mfaEnrolledAt, setMfaEnrolled, attachEvidence, audit, createRun, createScreenRun, ingest, reproduce, review, reviewScreenRun, sessionUser } from '@/lib/store';
 import type { ScreenInput } from '@/lib/esg/engine';
-import { SESSION_COOKIE, authConfigured, checkPassword, clearFails, createSession, lockedFor, recordFail } from '@/lib/auth';
+import { ACCOUNTS, MFA_COOKIE, SESSION_COOKIE, authConfigured, checkPassword, clearFails, createMfaPending, createSession, lockedFor, mfaRequired, readMfaPending, recordFail, verifyTotp } from '@/lib/auth';
 import { demoExtract } from '@/lib/portfolio';
 import type { Horizon, ScenarioKey } from '@/lib/params';
 import type { Approach } from '@/lib/engine';
@@ -26,12 +26,44 @@ export async function loginAction(_: unknown, form: FormData) {
     await audit('system', 'auth.login_failed', email, 'wrong email or password');
     return { error: left > 0 ? `Wrong email or password. ${left} attempt${left === 1 ? '' : 's'} left before a 15-minute lock.` : 'Too many failed attempts. Account locked for 15 minutes.' };
   }
-  clearFails(email);
   const user = USERS.find((u) => u.id === account.id)!;
+  const secure = (await headers()).get('x-forwarded-proto') === 'https';
+  if (mfaRequired) {
+    const p = createMfaPending(user.id);
+    (await cookies()).set(MFA_COOKIE, p.token, { httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge: p.maxAge });
+    await audit(user.name, 'auth.password_ok', user.id, 'awaiting authenticator code');
+    redirect('/login/mfa');
+  }
+  clearFails(email);
+  const { token, maxAge } = createSession(user.id);
+  (await cookies()).set(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge });
+  await audit(user.name, 'auth.login', user.id, `${user.role} · password only (MFA switched off) · session 8h`);
+  redirect('/');
+}
+
+export async function mfaAction(_: unknown, form: FormData) {
+  const jar = await cookies();
+  const id = readMfaPending(jar.get(MFA_COOKIE)?.value);
+  if (!id) return { error: 'Your sign-in expired. Start again with your email and password.', restart: true };
+  const user = USERS.find((u) => u.id === id)!;
+  const email = ACCOUNTS.find((a) => a.id === id)!.email;
+  const locked = lockedFor(email);
+  if (locked) {
+    await audit('system', 'auth.login_blocked', email, `account locked, ${locked} min remaining`);
+    return { error: `Too many failed attempts. Try again in ${locked} minute${locked === 1 ? '' : 's'}.`, restart: true };
+  }
+  if (!verifyTotp(id, String(form.get('code') ?? ''))) {
+    const left = recordFail(email);
+    await audit('system', 'auth.mfa_failed', email, 'wrong or reused authenticator code');
+    return { error: left > 0 ? `That code is not valid. ${left} attempt${left === 1 ? '' : 's'} left before a 15-minute lock.` : 'Too many failed attempts. Account locked for 15 minutes.', restart: left <= 0 };
+  }
+  clearFails(email);
+  if (!(await mfaEnrolledAt(id))) { await setMfaEnrolled(id); await audit(user.name, 'auth.mfa_enrolled', user.id, 'authenticator app registered'); }
+  jar.delete(MFA_COOKIE);
   const { token, maxAge } = createSession(user.id);
   const secure = (await headers()).get('x-forwarded-proto') === 'https';
-  (await cookies()).set(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge });
-  await audit(user.name, 'auth.login', user.id, `${user.role} · session 8h`);
+  jar.set(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge });
+  await audit(user.name, 'auth.login', user.id, `${user.role} · password + authenticator code · session 8h`);
   redirect('/');
 }
 
