@@ -16,11 +16,11 @@ export function ScreenReview({ id, status, canRun, canApprove, isMaker, provided
   if (status === 'escalated') return message('The reviewer escalated this assessment for enhanced due diligence.');
   if (status === 'draft' || status === 'returned') {
     return <div className="space-y-3">
-      {message(status === 'returned' ? 'Returned to the analyst. Review the reviewer’s note before submitting again.' : 'Draft awaiting analyst submission.')}
+      {message(status === 'returned' ? 'Returned to the analyst. Review the note below and address the requested changes before resubmitting.' : 'Draft awaiting analyst submission.')}
       {canRun && <form action={act}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="action" value="submit" />
-        <button className={btnClass} disabled={pending} data-action="screen-submit">{pending ? 'Submitting…' : 'Submit for review'}</button>
+        <button className={btnClass} disabled={pending} data-action="screen-submit">{pending ? 'Submitting…' : status === 'returned' ? 'Resubmit for review' : 'Submit for review'}</button>
         {state && 'error' in state && <p role="alert" className="mt-2 text-sm text-red-600">{state.error}</p>}
       </form>}
     </div>;
