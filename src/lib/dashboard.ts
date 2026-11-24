@@ -1,6 +1,6 @@
 import 'server-only';
 import { BANK, SECTORS, sectorOf } from './params';
-import { physicalScore, runStress } from './engine';
+import { physicalScore, runCredit } from './engine';
 import type { Loan } from './portfolio';
 
 export type Level = 'High' | 'Med' | 'Low';
@@ -27,7 +27,7 @@ function compute(loans: Loan[]) {
     return { name: s.name, ead: e, physical, transition, overall: rank[physical] >= rank[transition] ? physical : transition };
   }).sort((a, b) => rank[b.overall] - rank[a.overall] || b.ead - a.ead);
   const highRisk = loans.filter((l) => phys.get(l.id)! >= 0.5 || (sectorOf(l.sector).transition >= 0.6 && !l.transitionPlan)).reduce((a, l) => a + l.ead, 0);
-  const runs = STRESS_VIEW.map((v) => ({ ...v, run: runStress(loans, { scenario: v.scenario, horizon: 2050, approach: 'bottom-up' }) }));
+  const runs = STRESS_VIEW.map((v) => ({ ...v, run: runCredit(loans, { scenario: v.scenario, horizon: 2050, approach: 'bottom-up' }) }));
   const base = runs[0].run;
   return {
     ead, highRisk, sectors,
@@ -39,6 +39,10 @@ function compute(loans: Loan[]) {
 }
 
 export function dashboard(datasetId: string, loans: Loan[]) {
-  if (!cache.has(datasetId)) cache.set(datasetId, compute(loans));
+  if (!cache.has(datasetId)) {
+    const t = Date.now();
+    cache.set(datasetId, compute(loans));
+    console.log(`[dashboard] computed ${datasetId} in ${Date.now() - t}ms`);
+  }
   return cache.get(datasetId)!;
 }

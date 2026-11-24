@@ -42,6 +42,11 @@ export function transitionScore(loan: Loan, shock: number) {
 }
 
 export function runStress(loans: Loan[], input: RunInput) {
+  const c = runCredit(loans, input);
+  return { ...c, lossDist: lossDistribution(loans, c.results) };
+}
+
+export function runCredit(loans: Loan[], input: RunInput) {
   const sc = scenarioOf(input.scenario);
   const shock = sc.transitionShock[input.horizon], phys = sc.physical[input.horizon], gdp = sc.gdpShock[input.horizon];
 
@@ -81,7 +86,7 @@ export function runStress(loans: Loan[], input: RunInput) {
     };
   });
 
-  return { input, modelVersion: MODEL_VERSION, results, summary: summarise(results), lossDist: lossDistribution(loans, results), capital: capitalImpact(results), liquidity: liquidityImpact(results, phys) };
+  return { input, modelVersion: MODEL_VERSION, results, summary: summarise(results), capital: capitalImpact(results), liquidity: liquidityImpact(results, phys) };
 }
 
 function summarise(rs: LoanResult[]) {
