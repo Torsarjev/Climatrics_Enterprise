@@ -10,6 +10,12 @@ const steps = [
     detail: 'As Kofi, load the sample extract. Show the accepted and rejected rows, reconciled control totals and dataset hash.',
   },
   {
+    title: 'Screen Volta Agro Processing and the loan book',
+    href: '/screening',
+    link: 'Open Engine I screening',
+    detail: 'Show the GHS 20m solar allocation and the enhanced due diligence referral. Open Portfolio screening to see the four-framework results and management actions across the loan book.',
+  },
+  {
     title: 'Explain portfolio exposure',
     href: '/portfolio',
     link: 'Open portfolio management',

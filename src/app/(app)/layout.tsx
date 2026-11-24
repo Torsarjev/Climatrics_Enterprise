@@ -20,7 +20,7 @@ const NAV = [
   ['/credit', 'Credit risk & ECL', 'credit'],
   ['/capital', 'ICAAP & ILAAP', 'capital'],
   ['/emissions', 'Carbon accounting', 'emissions'],
-  ['/alignment', 'SDG & taxonomy', 'sdg'],
+  ['/screening/portfolio', 'Portfolio screening', 'sdg'],
   ['/disclosure', 'IFRS S2 disclosure', 'disclosure'],
   ['/reports', 'Regulatory reports', 'reports'],
   ['/governance', 'Model governance', 'governance'],

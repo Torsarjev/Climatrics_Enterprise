@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { activeLoans, screenRuns } from '@/lib/store';
 import { boardView } from '@/lib/board';
+import { ghs } from '@/lib/fmt';
 import { Badge, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -56,6 +57,13 @@ export default async function BoardPage() {
           </div>
         </Card>
       </div>
+
+      <Card title="Portfolio screening actions" className="mt-6">
+        <Table head={['Action', 'Suggested owner', 'Facilities', 'Outstanding']} rows={v.screeningActions.map((action) => [
+          <Link key={action.code} href={{ pathname: '/screening/portfolio', query: { action: action.code } }} className="underline">{action.text}</Link>,
+          action.owner, action.n, ghs(action.ead),
+        ])} />
+      </Card>
 
       <Card title="Management action tracker" note="from screenings and limit status" className="mt-6">
         {v.actions.length ? (

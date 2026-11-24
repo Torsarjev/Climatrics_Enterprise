@@ -4,6 +4,7 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { USERS, mfaEnrolledAt, setMfaEnrolled, attachEvidence, audit, createRun, createScreenRun, ingest, reproduce, review, reviewScreenRun, sessionUser } from '@/lib/store';
+import { savePortfolioScreening } from '@/lib/esg/portfolio';
 import type { ScreenInput } from '@/lib/esg/engine';
 import { ACCOUNTS, MFA_COOKIE, SESSION_COOKIE, authConfigured, checkPassword, clearFails, createMfaPending, createSession, lockedFor, mfaRequired, readMfaPending, recordFail, verifyTotp } from '@/lib/auth';
 import { demoExtract } from '@/lib/portfolio';
@@ -117,7 +118,7 @@ export async function screenRunAction(_: unknown, form: FormData) {
   let id: string;
   try {
     const input = JSON.parse(String(form.get('payload'))) as ScreenInput;
-    id = await createScreenRun(input);
+    id = await createScreenRun(input, String(form.get('parent') ?? '') || undefined);
   } catch (e) {
     return { error: (e as Error).message };
   }
@@ -127,7 +128,7 @@ export async function screenRunAction(_: unknown, form: FormData) {
 export async function evidenceAction(_: unknown, form: FormData) {
   let id: string;
   try {
-    id = await attachEvidence(String(form.get('id')), String(form.get('evidence')), String(form.get('ref') ?? '').trim() || 'synthetic-document.pdf');
+    id = await attachEvidence(String(form.get('id')), String(form.get('evidence')), String(form.get('ref') ?? '').trim());
   } catch (e) {
     return { error: (e as Error).message };
   }
@@ -136,10 +137,15 @@ export async function evidenceAction(_: unknown, form: FormData) {
 
 export async function screenReviewAction(_: unknown, form: FormData) {
   try {
-    await reviewScreenRun(String(form.get('id')), form.get('action') as 'submit' | 'approve' | 'escalate' | 'return', String(form.get('note') ?? '') || undefined);
+    await reviewScreenRun(String(form.get('id')), form.get('action') as 'submit' | 'approve' | 'escalate' | 'return', String(form.get('note') ?? '') || undefined, form.getAll('verifiedEvidence').map(String));
   } catch (e) {
     return { error: (e as Error).message };
   }
   revalidatePath('/', 'layout');
   return { ok: true };
+}
+
+export async function portfolioScreenAction() {
+  const id = await savePortfolioScreening();
+  redirect(`/screening/portfolio?run_id=${id}`);
 }

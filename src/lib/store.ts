@@ -4,11 +4,12 @@ import { redirect } from 'next/navigation';
 import { SESSION_COOKIE, readSession } from './auth';
 import { demoExtract, Loan } from './portfolio';
 import { ingestCsv, IngestResult } from './ingest';
-import { runStress, RunInput, StressRun } from './engine';
-import { ScreenInput, screen, validate } from './esg/engine';
+import { physicalScore, runStress, RunInput, StressRun } from './engine';
+import { ScreenInput, type ScreenResult, neededEvidence, screen, validate } from './esg/engine';
 import { CRITERIA, FRAMEWORK_VERSIONS, QUESTIONS } from './esg/rules';
 import * as P from './params';
 import { sha256 } from './math';
+import { ghanaShocks } from './calibration';
 import { onNetlify, readText, writeText } from './kv';
 
 export const USERS = [
@@ -28,7 +29,7 @@ export interface RunRecord {
 export interface AuditEvent { at: string; by: string; action: string; target: string; detail?: string }
 export interface ScreenRunRecord {
   id: string; createdAt: string; by: string; facilityId: string; borrower: string; parent?: string;
-  input: ScreenInput; rulesHash: string; versions: Record<string, string>;
+  input: ScreenInput; datasetId?: string; result?: ScreenResult; reviewedResult?: ScreenResult; rulesHash: string; versions: Record<string, string>;
   status: 'draft' | 'submitted' | 'approved' | 'escalated' | 'returned';
   verifiedEvidence?: string[]; submittedBy?: string; reviewedBy?: string; reviewedAt?: string; note?: string;
 }
@@ -182,24 +183,46 @@ export async function mfaEnrolledAt(id: string) { return (await db()).mfa?.[id] 
 export async function setMfaEnrolled(id: string) { const d = await db(); d.mfa = { ...(d.mfa ?? {}), [id]: now() }; await save(d); }
 
 export async function screenRuns() { return (await db()).screenRuns ?? []; }
+export const resultForScreenRun = (r: ScreenRunRecord) => r.reviewedResult ?? r.result ?? screen(effectiveInput(r));
+
 export async function getScreenRun(id: string) {
   const r = (await screenRuns()).find((x) => x.id === id);
-  return r ? { rec: r, result: screen(effectiveInput(r)) } : null;
+  return r ? { rec: r, result: resultForScreenRun(r) } : null;
+}
+
+export function screeningFacts(loan: Loan): ScreenInput['facts'] {
+  const region = P.REGIONS.find((item) => item.name === loan.region);
+  return { droughtHazard: region?.hazard.drought ?? null, physical2050: region ? physicalScore(loan, ghanaShocks('current', 2050).physical).score : null };
 }
 
 export async function createScreenRun(input: ScreenInput, parent?: string) {
   const d = await db(), u = await currentUser();
   if (!u.can.includes('run' as never)) throw new Error('Only an analyst can run a screening');
+  const { dataset, loans } = await activeLoans();
+  const loan = loans.find((l) => l.id === input?.facilityId);
+  if (!loan) throw new Error('Facility must exist in the active portfolio');
+  if (parent && !d.screenRuns?.some((run) => run.id === parent && run.facilityId === loan.id)) throw new Error('Previous screening must belong to this facility');
+  input = { ...input, facts: screeningFacts(loan), borrower: loan.borrower, sector: loan.sector, region: loan.region, ead: loan.ead,
+    site: { latitude: loan.lat, longitude: loan.lon, purpose: loan.purpose } };
+  if (Object.values(input.responses).some((value) => value !== null && typeof value !== 'boolean')) throw new Error('Questionnaire answers must be Yes, No or Unknown');
+  const validEvidence = neededEvidence(input);
+  input.evidence = Object.fromEntries(Object.entries(input.evidence).filter(([id]) => validEvidence.includes(id)));
+  for (const evidence of Object.values(input.evidence)) {
+    if (!['missing', 'provided', 'verified'].includes(evidence.status)) throw new Error('Invalid evidence status');
+    if (evidence.status !== 'missing' && !evidence.ref?.trim()) throw new Error('Each provided item requires a document reference');
+  }
   const v = validate(input);
   if (!v.ok) throw new Error(v.errors.join('; '));
+  const catalogHash = await rulesHash();
   d.screenRuns ??= [];
   const id = `SCR-${String(d.screenRuns.length + 1).padStart(4, '0')}`;
   const rec: ScreenRunRecord = {
-    id, createdAt: now(), by: u.name, facilityId: input.facilityId, borrower: input.borrower, parent,
+    id, createdAt: now(), by: u.name, facilityId: input.facilityId, borrower: input.borrower, parent, datasetId: dataset.id,
     input: { ...input, evidence: Object.fromEntries(Object.entries(input.evidence).map(([k, e]) => [k, { ...e, status: e.status === 'verified' ? 'provided' as const : e.status }])) },
-    rulesHash: await rulesHash(), versions: Object.fromEntries(Object.entries(FRAMEWORK_VERSIONS).map(([k, f]) => [k, f.version])), status: 'draft',
+    rulesHash: catalogHash, versions: Object.fromEntries(Object.entries(FRAMEWORK_VERSIONS).map(([k, f]) => [k, f.version])), status: 'draft',
   };
   const r = screen(rec.input);
+  rec.result = r;
   d.screenRuns.unshift(rec);
   d.audit.unshift({ at: now(), by: u.name, action: parent ? 'screening.rescreened' : 'screening.run', target: id, detail: `${input.borrower} (${input.facilityId}) · ESMS ${r.esms.gate}/${r.esms.tier} · ${r.decision.label}${parent ? ` · replaces ${parent}` : ''}` });
   await save(d);
@@ -209,13 +232,14 @@ export async function createScreenRun(input: ScreenInput, parent?: string) {
 export async function attachEvidence(id: string, evidenceId: string, ref: string) {
   const found = (await screenRuns()).find((x) => x.id === id);
   if (!found) throw new Error('Screening run not found');
-  if (found.status === 'approved') throw new Error('Approved runs are locked; start a new screening');
+  if (!ref.trim() || !neededEvidence(found.input).includes(evidenceId)) throw new Error('Provide a reference for an applicable evidence item');
   const input: ScreenInput = { ...found.input, evidence: { ...found.input.evidence, [evidenceId]: { status: 'provided', ref } } };
   return createScreenRun(input, id);
 }
 
-export async function reviewScreenRun(id: string, action: 'submit' | 'approve' | 'escalate' | 'return', note?: string) {
+export async function reviewScreenRun(id: string, action: 'submit' | 'approve' | 'escalate' | 'return', note?: string, verifiedEvidence: string[] = []) {
   const d = await db(), u = await currentUser();
+  if (!['submit', 'approve', 'escalate', 'return'].includes(action)) throw new Error('Invalid review action');
   const rec = (d.screenRuns ?? []).find((x) => x.id === id);
   if (!rec) throw new Error('Screening run not found');
   if (action === 'submit') {
@@ -226,7 +250,16 @@ export async function reviewScreenRun(id: string, action: 'submit' | 'approve' |
     if (!u.can.includes('approve' as never)) throw new Error('Only an approver can review screenings');
     if (rec.status !== 'submitted') throw new Error('The screening must be submitted first');
     if (rec.by === u.name || rec.submittedBy === u.name) throw new Error('Maker-checker: you cannot review your own screening');
-    if (action === 'approve') rec.verifiedEvidence = Object.entries(rec.input.evidence).filter(([, e]) => e.status === 'provided').map(([k]) => k);
+    if (action === 'approve') {
+      if (rec.rulesHash !== await rulesHash()) throw new Error('Re-screen with the current rules before approving');
+      if (rec.status !== 'submitted') throw new Error('The screening has already been reviewed');
+      if (!Array.isArray(verifiedEvidence) || verifiedEvidence.some((id) => rec.input.evidence[id]?.status !== 'provided' || !rec.input.evidence[id].ref?.trim())) throw new Error('Select only provided evidence with a document reference');
+      const reviewed = { ...rec, verifiedEvidence: [...new Set(verifiedEvidence)] };
+      const result = screen(effectiveInput(reviewed));
+      if (result.esms.gate !== 'pass') throw new Error('Resolve the exclusion gate or escalate before approval');
+      rec.verifiedEvidence = reviewed.verifiedEvidence;
+      rec.reviewedResult = result;
+    }
     rec.status = action === 'approve' ? 'approved' : action === 'escalate' ? 'escalated' : 'returned';
     rec.reviewedBy = u.name; rec.reviewedAt = now(); rec.note = note;
   }

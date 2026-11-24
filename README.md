@@ -64,3 +64,11 @@ Open **Demo walkthrough** from the sidebar for a guided flow with links to the a
 10. **Architecture:** layers, the production technology stack, security controls, integrations and the 12-month plan.
 
 Tip: run Net Zero 2050 @ 2030 and Delayed Transition @ 2040 before the call, so "All scenarios side by side" on the ICAAP page is already populated.
+
+## Engine I sustainable finance demo
+
+Open **Sustainability screening** and select Volta Agro Processing to see the synthetic GHS 80m facility split between GHS 20m of rooftop solar and GHS 60m of other proceeds. Run the assessment to show the enhanced due diligence referral, pending solar allocation, potential NDC and SDG contributions, and actions for the permit and wastewater findings.
+
+Use **Revise and re-screen** to record updated answers and synthetic evidence in a new assessment. Submit as Kofi, then sign in as Ama and select the individual documents verified during review. Aligned exposure is calculated from current approved activity allocations that pass the applicable rules. Review outcomes and evidence lineage are available from the facility report.
+
+Open **Portfolio screening** to see the consolidated four-framework breakdown, decision guidance and action queue. Use **Save portfolio screening** for a repeatable snapshot with a JSON report. The Board dashboard links to the action queue by management action. The rules and evidence are illustrative. GCB’s approved ESMS criteria and verified production framework mappings are required before production use.
