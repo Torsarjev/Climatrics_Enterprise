@@ -61,10 +61,24 @@ export function ingestCsv(text: string): IngestResult {
     const lat = num('lat'), lon = num('lon');
     if (!g('lat') || !g('lon') || !(lat > 4.5 && lat < 11.3 && lon > -3.4 && lon < 1.3)) reasons.push('Location outside Ghana or missing');
 
+    const readSite = (prefix: 'facility' | 'collateral') => {
+      const fields = ['Lat', 'Lon', 'Region', 'LocationRef'].map((suffix) => g(prefix + suffix));
+      if (fields.every((value) => !value)) return undefined;
+      const [latitude, longitude, region, reference] = fields;
+      const lat = Number(latitude), lon = Number(longitude);
+      if (!latitude || !longitude || !reference || !(lat > 4.5 && lat < 11.3 && lon > -3.4 && lon < 1.3) || !REGIONS.some((r) => r.name === region)) {
+        reasons.push(`Location for ${prefix} requires Ghana coordinates, region and a verification reference`);
+        return undefined;
+      }
+      return { lat, lon, region, reference };
+    };
+    const facilitySite = readSite('facility');
+    const collateralSite = readSite('collateral');
+
     if (reasons.length) { rejected.push({ row: i + 2, id: id || '—', reasons }); eadRejected += Number.isFinite(ead) ? ead : 0; return; }
     seen.add(id);
     accepted.push({
-      id, borrower: g('borrower'), sector: g('sector') as Loan['sector'], region: g('region'), lat, lon,
+      id, borrowerId: g('borrowerId') || undefined, facilitySite, collateralSite, borrower: g('borrower'), sector: g('sector') as Loan['sector'], region: g('region'), lat, lon,
       geoConfidence: g('geoConfidence') as Loan['geoConfidence'], ead, collateralType: g('collateralType') as Loan['collateralType'],
       collateralValue: num('collateralValue'), maturityYears: num('maturityYears'), pd, lgd, stage: num('stage') as Loan['stage'],
       transitionPlan: g('transitionPlan') === 'true', emissionsIntensity: num('emissionsIntensity'), purpose: g('purpose'),

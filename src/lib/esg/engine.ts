@@ -6,6 +6,7 @@ export type EvidenceStatus = 'missing' | 'provided' | 'verified';
 
 export interface Activity { id: string; code: string; amount: number; efficiencyGainPct?: number | null }
 export interface ScreenInput {
+  transitionRiskScore?: number;
   facilityId: string; borrower: string; sector: string; region: string; ead: number;
   activities: Activity[];
   responses: Record<string, boolean | null>;
@@ -87,6 +88,7 @@ function judge(cr: Criterion, x: Ctx): { outcome: Outcome; reason: string } {
 export function validate(input: ScreenInput) {
   const errors: string[] = [];
   const total = input.activities.reduce((a, b) => a + b.amount, 0);
+  if (input.transitionRiskScore !== undefined && (!Number.isFinite(input.transitionRiskScore) || input.transitionRiskScore < 1 || input.transitionRiskScore > 5)) errors.push('Transition risk score must be between 1 and 5');
   if (!Number.isFinite(input.ead) || input.ead < 0) errors.push('Facility outstanding must be a finite non-negative amount');
   if (input.activities.some((a) => !Number.isFinite(a.amount) || !(a.amount > 0))) errors.push('Every activity allocation must be a positive amount');
   if (new Set(input.activities.map((a) => a.id)).size !== input.activities.length || input.activities.some((a) => !/^[a-zA-Z0-9_-]+$/.test(a.id))) errors.push('Activity IDs must be unique and use letters, digits, hyphens or underscores');
@@ -193,8 +195,9 @@ export const visibleQuestions = (input: Pick<ScreenInput, 'sector' | 'activities
     return evalCond(q.showWhen, x) === true;
   });
 
-export const neededEvidence = (input: Pick<ScreenInput, 'sector' | 'activities' | 'evidence'>) => {
+export const neededEvidence = (input: Pick<ScreenInput, 'sector' | 'activities' | 'evidence' | 'transitionRiskScore'>) => {
   const ids = new Set<string>();
+  if (input.transitionRiskScore !== undefined) ids.add('EV_TRANSITION_SCORE');
   input.activities.forEach((a) => { const e = ACTIVITIES[a.code]?.evidence; if (e) ids.add(criterionEvidenceId(input, e, a)); });
   if (['agri', 'mining', 'oilgas', 'power', 'manuf', 'constr', 'renew'].includes(input.sector)) ids.add('EV_EPA_PERMIT');
   if (['agri', 'mining', 'manuf', 'oilgas'].includes(input.sector)) ids.add('EV_WASTEWATER');

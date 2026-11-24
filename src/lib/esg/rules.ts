@@ -53,6 +53,7 @@ export const ACTIVITIES: Record<string, { name: string; evidence?: string }> = {
 };
 
 export const EVIDENCE: Record<string, string> = {
+  EV_TRANSITION_SCORE: 'Transition assessment supporting the 1–5 score',
   EV_SOLAR_TECH: 'Solar system technical specification, installed capacity and commissioning certificate',
   EV_RE_TECH: 'Project technical specification and commissioning evidence',
   EV_EE_AUDIT: 'Energy audit showing the efficiency gain',

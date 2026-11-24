@@ -18,6 +18,7 @@ export function ScreenBuilder({ facilities, initialId, previous }: { facilities:
   const [input, setInput] = useState<ScreenInput>(() => previous ? {
     ...initial.preset,
     activities: previous.input.activities,
+    transitionRiskScore: previous.input.transitionRiskScore,
     responses: previous.input.responses,
     evidence: Object.fromEntries(Object.entries(previous.input.evidence).map(([id, item]) => [id, { ...item, status: item.status === 'verified' ? 'provided' : item.status }])),
   } : initial.preset);
@@ -97,6 +98,13 @@ export function ScreenBuilder({ facilities, initialId, previous }: { facilities:
       <section>
         <p className="text-sm font-semibold">3 · Evidence <span className="font-normal text-zinc-500">(verification is done by the reviewer)</span></p>
         <div className="mt-2 space-y-2">
+          <label className="block text-sm">Transition risk score (1–5, optional)
+            <input type="number" min="1" max="5" step="0.01" value={input.transitionRiskScore ?? ''} onChange={(event) => {
+              const value = event.target.value;
+              setInput((current) => ({ ...current, transitionRiskScore: value ? Number(value) : undefined }));
+            }} className={`ml-2 w-24 ${field}`} />
+          </label>
+          {input.transitionRiskScore !== undefined && <p className="text-sm text-zinc-600">Engine II uses this score after independent screening approval and verification of its supporting assessment.</p>}
           {evidenceIds.map((e) => (
             <div key={e} className="grid items-center gap-2 text-sm md:grid-cols-[1fr_8rem_12rem_10rem]">
               <span>{evidenceLabel(e)}</span>

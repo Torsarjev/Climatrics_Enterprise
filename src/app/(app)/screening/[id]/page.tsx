@@ -45,6 +45,7 @@ export default async function ScreenRunPage({ params }: { params: Promise<{ id: 
         <p className="mt-0.5 text-sm">Exclusion gate: <b>{R.esms.gate}</b> · ESMS risk: <b>{R.esms.tier}</b>. The ESMS decision governs credit progression.{R.esms.gate === 'excluded' && ' Review the framework results for diagnostic purposes.'}</p>
       </div>
 
+      {input.transitionRiskScore !== undefined && <p className="mt-3 text-sm text-zinc-700">Engine I transition risk score <strong>{input.transitionRiskScore.toFixed(2)} / 5</strong> · {approved && input.evidence.EV_TRANSITION_SCORE?.status === 'verified' ? 'Evidence verified and assessment approved' : 'Awaiting independent approval or evidence verification'}</p>}
       <section id="review" className="mt-5 scroll-mt-4">
         <Card title="Review and approval" note={<Link href="/screening/review" className="underline">Screening review queue</Link>}>
           {rec.status === 'submitted' && <p className="mb-3 text-sm font-medium">Submitted by {rec.submittedBy ?? rec.by} · Awaiting independent review</p>}

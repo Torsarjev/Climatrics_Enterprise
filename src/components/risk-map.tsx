@@ -12,13 +12,13 @@ const LAYERS = ['composite', 'flood', 'drought', 'heat', 'coastal'] as const;
 
 export default function RiskMap({ points, regions }: { points: MapPoint[]; regions: MapRegion[] }) {
   const [layer, setLayer] = useState<(typeof LAYERS)[number]>('composite');
-  const maxEad = Math.max(...points.map((p) => p.ead));
+  const maxEad = Math.max(1, ...points.map((p) => p.ead));
   return (
     <div>
       <div className="mb-3 flex flex-wrap gap-2">
         {LAYERS.map((l) => (
           <button key={l} onClick={() => setLayer(l)} className={`rounded-md px-2.5 py-1 text-xs capitalize ring-1 ${layer === l ? 'bg-zinc-900 text-white ring-zinc-900' : 'text-zinc-700 ring-zinc-300'}`}>
-            {l === 'composite' ? 'Collateral risk (composite)' : `${l} hazard`}
+            {l === 'composite' ? 'Physical risk (composite)' : `${l} hazard`}
           </button>
         ))}
       </div>
@@ -32,7 +32,7 @@ export default function RiskMap({ points, regions }: { points: MapPoint[]; regio
         {points.map((p) => {
           const v = layer === 'composite' ? p.score : p.haz[layer];
           return (
-            <CircleMarker key={p.id} center={[p.lat, p.lon]} radius={3 + 9 * Math.sqrt(p.ead / maxEad)} pathOptions={{ color: color(v), fillColor: color(v), fillOpacity: 0.75, weight: p.geo === 'gps' ? 1 : 2, dashArray: p.geo === 'gps' ? undefined : '3' }}>
+            <CircleMarker key={p.id} center={[p.lat, p.lon]} radius={3 + 9 * Math.sqrt(p.ead / maxEad)} pathOptions={{ color: color(v), fillColor: color(v), fillOpacity: 0.75, weight: p.geo === 'verified' ? 1 : 2, dashArray: p.geo === 'verified' ? undefined : '3' }}>
               <Tooltip>
                 <b>{p.borrower}</b> · {p.id}<br />
                 GHS {(p.ead / 1e6).toFixed(1)}m · score {(1 + 4 * v).toFixed(1)} / 5 · location {p.geo}
@@ -45,7 +45,7 @@ export default function RiskMap({ points, regions }: { points: MapPoint[]; regio
         {[['Low', 0.1], ['Moderate', 0.35], ['High', 0.55], ['Very high', 0.8]].map(([l, v]) => (
           <span key={l as string} className="flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: color(v as number) }} />{l}</span>
         ))}
-        <span>Dashed outline = located by address/region (lower confidence) · size = exposure</span>
+        <span>Dashed outline = legacy location proxy · marker size = facility outstanding or collateral value</span>
       </div>
     </div>
   );
