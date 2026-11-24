@@ -6,4 +6,4 @@ export function middleware(req: NextRequest) {
   return NextResponse.redirect(new URL('/login', req.url));
 }
 
-export const config = { matcher: ['/((?!login|_next|favicon.ico).*)'] };
+export const config = { matcher: ['/((?!login|api/health|_next|favicon.ico).*)'] };
