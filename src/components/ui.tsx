@@ -83,7 +83,7 @@ export function Badge({ children, tone = 'zinc' }: { children: React.ReactNode; 
 }
 
 export function Illustrative({ children }: { children?: React.ReactNode }) {
-  return <p className="mt-3 text-xs text-zinc-500">⚠︎ {children ?? 'Illustrative parameters pending methodology sign-off. Synthetic portfolio, no real customer data.'}</p>;
+  return <p className="mt-3 text-xs text-zinc-500">⚠︎ {children ?? 'Illustrative parameters pending methodology sign-off. Synthetic loan book, no real customer data.'}</p>;
 }
 
 export function Btn({ href, children, primary }: { href: string; children: React.ReactNode; primary?: boolean }) {

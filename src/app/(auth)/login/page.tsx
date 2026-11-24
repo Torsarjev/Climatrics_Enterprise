@@ -19,7 +19,7 @@ export default async function LoginPage() {
           <h1 className="text-3xl font-semibold leading-tight lg:text-4xl">Climate risk, from loan book to Board report.</h1>
           <p className="mt-4 max-w-md text-slate-300">Screening, physical and transition risk, NGFS stress testing, ICAAP and ILAAP, financed emissions and regulatory evidence, in one governed workflow.</p>
         </div>
-        <p className="text-sm text-slate-400">Prepared for GCB Bank · Demo environment · synthetic data only</p>
+        <p className="text-sm text-slate-400">Prepared for GCB Bank · Demo environment · synthetic loan book, official NGFS and World Bank scenario data</p>
       </section>
       <section className="flex flex-1 items-center justify-center p-6 lg:p-14">
         <div className="w-full max-w-sm">
