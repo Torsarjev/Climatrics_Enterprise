@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -50,9 +50,9 @@ jobs:
         if: env.NETLIFY_AUTH_TOKEN == '' || env.NETLIFY_SITE_ID == ''
         run: |
           echo "::warning::NETLIFY_AUTH_TOKEN or NETLIFY_SITE_ID is not set in the repository secrets, so the deploy is skipped."
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
         with:
           node-version: 24
