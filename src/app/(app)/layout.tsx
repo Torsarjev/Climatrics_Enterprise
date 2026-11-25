@@ -25,7 +25,7 @@ const NAV = [
   ['/screening/portfolio', 'Portfolio screening', 'sdg'],
   ['/disclosure', 'IFRS S1/S2 disclosure', 'disclosure'],
   ['/reports', 'Regulatory reports', 'reports'],
-  ['/governance', 'Model governance', 'governance'],
+  ['/governance', 'Data and model governance', 'governance'],
   ['/methodology', 'Methodology', 'disclosure'],
   ['/architecture', 'Architecture', 'architecture'],
   ['/security', 'Security & integrations', 'security'],
