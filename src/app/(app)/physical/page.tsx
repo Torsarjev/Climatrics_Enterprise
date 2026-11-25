@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import { activeLoans, screenRuns } from '@/lib/store';
-import { REGIONS, sectorOf } from '@/lib/params';
+import { COLLATERAL, CREDIT, REGIONS, sectorOf } from '@/lib/params';
 import { assessPortfolio, hazardEvidence, hazardSource, HIGH_PHYSICAL_RISK, MATERIAL_HAZARD, remediationShortlist, SITE_EXPOSURE_REFERENCE } from '@/lib/physical-risk';
 import { Bars, Card, PageHead, Stat, Table } from '@/components/ui';
 import { RiskMap } from '@/components/risk-map-lazy';
 import { BorrowerSelector } from '@/components/borrower-selector';
-import { transitionScore } from '@/lib/engine';
+import { transitionScore, transitionScoreInputs } from '@/lib/engine';
 import { ghs, pct, to5 } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
@@ -46,7 +46,9 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHead area="Engine II · Physical risk & GIS" title="Borrower climate risk" intro="Review facility and collateral exposure, the approved Engine I transition assessment, and borrower-specific remediation. Portfolio views use the active loan book." />
+      <PageHead area="Engine II · Physical risk & GIS" title="Borrower climate risk" intro="Review facility and collateral exposure, the approved Engine I transition assessment, and borrower-specific remediation. Portfolio views use the active loan book.">
+        <a href="#engine-ii-methodology" className="text-sm font-medium text-lime-900 underline">Score methodology</a>
+      </PageHead>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Portfolio exposure" value={ghs(ead)} sub={`${facilities.length.toLocaleString('en-GB')} facilities`} />
         <Stat label="High physical risk exposure" value={share(highEad)} sub={`${ghs(highEad)} across borrower groups scoring ≥ 3.0`} tone="warn" />
@@ -80,11 +82,12 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
                 ))}
               </div>
               <p className="mb-4 text-sm text-zinc-600">The physical score uses the highest applicable site score. The transition score uses the highest facility score. Where verified transition scores are unavailable, the demo uses the loan’s sector sensitivity, emissions intensity and transition plan to calculate an estimate. Portfolio approval coverage counts verified scores.</p>
-              <Table head={['Facility', 'Outstanding', 'Physical risk', 'Transition risk', 'Engine I source']} rows={selected.facilities.map((facility, index) => [
+              <Table head={['Facility', 'Outstanding', 'Physical risk', 'Transition risk', 'Transition score source']} rows={selected.facilities.map((facility, index) => [
                 facility.loan.id, ghs(facility.loan.ead), scoreLabel(facility.physical), `${scoreLabel(transitionForDisplay[index])}${facility.transition ? ' · verified' : ' · demo estimate'}`,
                 facility.transition ? <Link key="source" href={`/screening/${facility.transition.runId}#review`} className="underline">{facility.transition.runId} · {facility.transition.evidence}</Link>
-                  : facility.latestRun ? <Link key="source" href={`/screening/${facility.latestRun}`} className="underline">Open assessment {facility.latestRun}</Link>
-                    : <Link key="source" href={{ pathname: '/screening', query: { facility: facility.loan.id } }} className="underline">Open Engine I questionnaire</Link>,
+                  : <div key="source"><a href="#transition-method" className="underline">Demo loan data and sector parameters</a><br />
+                    {facility.latestRun ? <Link href={`/screening/${facility.latestRun}`} className="text-sm underline">Open Engine I assessment {facility.latestRun}</Link>
+                      : <Link href={{ pathname: '/screening', query: { facility: facility.loan.id } }} className="text-sm underline">Open Engine I questionnaire</Link>}</div>,
               ])} />
               <div className="mt-4">
                 <Table head={['Facility and site', 'Region and coordinates', 'Location evidence', 'Financial exposure', 'Site score', 'Hazard × exposure × vulnerability']} rows={selected.facilities.flatMap((facility) => facility.sites.map((site) => [
@@ -92,7 +95,7 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
                   site.reference ?? site.quality,
                   <div key="exposure" className="whitespace-nowrap">{ghs(site.exposureAmount)} {site.kind === 'Facility' ? 'EAD' : 'collateral'}<p className="text-xs text-zinc-600">Exposure factor {site.exposure.toFixed(3)}</p></div>,
                   scoreLabel(site.score),
-                  <ul key="hazards" className="whitespace-nowrap">{site.hazards.map((item) => <li key={item.hazard} className="capitalize">{item.hazard} · {item.intensity.toFixed(3)} × {site.exposure.toFixed(3)} × {item.vulnerability.toFixed(3)} ≈ {item.impact.toFixed(3)}</li>)}</ul>,
+                  <ul key="hazards" className="whitespace-nowrap">{site.hazards.map((item) => <li key={item.hazard}><span className="capitalize">{item.hazard}</span> · {item.intensity.toFixed(3)} × {site.exposure.toFixed(3)} × {item.vulnerability.toFixed(3)} ≈ {item.impact.toFixed(3)}<span className="block text-xs text-zinc-600">Hazard input {item.regionalBaseline.toFixed(3)} × {item.multiplier.toFixed(3)} · {site.kind === 'Facility' ? sectorOf(facility.loan.sector).name : COLLATERAL[facility.loan.collateralType].name} vulnerability</span></li>)}</ul>,
                 ]))} />
               </div>
             </>
@@ -143,14 +146,51 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
         />
       </Card>
 
-      <Card title="Hazard evidence and scoring method" className="mt-6" note="Current Policies · 2050 · SSP5-8.5">
+      <section id="engine-ii-methodology" className="mt-6 scroll-mt-4">
+      <Card title="Engine II score methodology">
+        <div className="space-y-6 text-sm text-zinc-700">
+        <section aria-labelledby="physical-method">
+        <h3 id="physical-method" className="mb-2 text-base font-semibold text-zinc-900">Physical risk · Current Policies 2050</h3>
         <p className="mb-3 text-sm text-zinc-600">{hazardSource}. Ghana-wide signals adjust illustrative regional hazard intensities. Coordinates identify the site on the map. Site-level hazard layers and observed flood depths are unavailable in this environment. Coastal intensity uses the regional baseline proxy.</p>
-        <Table head={['Risk driver', 'Modelled indicator', '2015–2024', '2045–2054']} rows={hazardEvidence.map((item) => [
-          item.hazard, item.label, `${item.base.toFixed(1)} ${item.unit}`, `${item.future.toFixed(1)} ${item.unit}`,
+        <Table head={['Risk driver', 'Modelled indicator', '2015–2024', '2045–2054', '2050 multiplier']} rows={hazardEvidence.map((item) => [
+          item.hazard, item.label, `${item.base.toFixed(1)} ${item.unit}`, `${item.future.toFixed(1)} ${item.unit}`, (1 + item.change).toFixed(3),
         ])} />
         <p className="mt-3 text-sm text-zinc-600">Engine II follows the IPCC risk framework by combining hazard, exposure and vulnerability. The demo uses facility outstanding exposure (EAD) or pledged collateral value as a financial proxy for what is exposed at the mapped site. The exposure factor is the site amount divided by {ghs(SITE_EXPOSURE_REFERENCE)}, capped at 1. The reference and weights are illustrative model choices. <a className="underline" href="https://www.ipcc.ch/report/ar6/wg2/chapter/annex-ii/">IPCC AR6 WGII glossary</a></p>
         <p className="mt-3 text-sm text-zinc-600">Each hazard contribution multiplies the three inputs. The site score weights the largest contribution at 70% and the average at 30%, then scales the result to 1–5. The highest applicable site score drives the borrower profile. Concentration tables count each qualifying facility’s outstanding exposure once. The remediation shortlist uses contributions of {MATERIAL_HAZARD.toFixed(2)} or higher.</p>
+        <dl className="mt-3 space-y-2">
+          <div><dt className="inline font-semibold">Hazard intensity </dt><dd className="inline">The illustrative regional baseline from the model’s Ghana region table is multiplied by the CCKP ratio (2045–2054 mean ÷ 2015–2024 mean, SSP5-8.5), then capped at 1. Coastal hazard uses the regional baseline with a multiplier of 1.</dd></div>
+          <div><dt className="inline font-semibold">Exposure </dt><dd className="inline">Facility EAD and pledged collateral value come from the active loan extract ({dataset.id}). They are scaled separately against the demo reference.</dd></div>
+          <div><dt className="inline font-semibold">Vulnerability </dt><dd className="inline">Facility coefficients come from the model’s sector table. Collateral coefficients come from the collateral-type table. These are illustrative 0–1 parameters.</dd></div>
+        </dl>
+        <p className="mt-3"><strong>Worked example from the screenshot.</strong> Bono East’s illustrative heat baseline of 0.600 × the CCKP multiplier of 1.161 gives 0.697. The facility exposure factor of 0.031 represents about GHS 3.1m of outstanding exposure. Heat vulnerability for trade is 0.400. The resulting heat contribution is about 0.009. Combining it with flood (0.007), drought (0.005) and coastal (0.000) gives a site score of about <strong>1.03 / 5</strong>. The collateral row uses its own exposure and the property vulnerability coefficients, yielding about <strong>1.02 / 5</strong>. The model calculates with unrounded inputs.</p>
+        </section>
+
+        <section aria-labelledby="transition-method">
+          <h3 id="transition-method" className="mb-2 scroll-mt-4 text-base font-semibold text-zinc-900">Transition risk</h3>
+          <p>When the latest Engine I assessment for the facility and active dataset is approved and its supporting evidence is verified, Engine II uses the recorded 1–5 score. Open the linked assessment to see its reference. The questionnaire link is the entry point for recording evidence.</p>
+          <p className="mt-2">For other facilities, the demo calculates an estimate using emissions intensity and transition-plan status from the active loan extract, and illustrative sector sensitivity and emissions benchmarks from the model’s sector table. Emissions intensity is in tonnes of CO₂e per GHS million of revenue.</p>
+          <ol className="mt-2 list-decimal space-y-1 pl-5">
+            <li>Normalize emissions intensity by dividing by 1.4 × the sector benchmark and limiting the result to 0–1.</li>
+            <li>Multiply sector sensitivity by (0.6 + 0.4 × normalized intensity) and then by (1 − plan relief). The model uses {pct(CREDIT.transitionReadinessRelief, 0)} relief when the loan extract flags a transition plan and 0% otherwise. Engine II sets the transition shock multiplier to 1.</li>
+            <li>Limit this result to 0–1 and convert it to the 1–5 scale using 1 + 4 × the result.</li>
+          </ol>
+          {selected && <div className="mt-3"><Table head={['Selected facility', 'Sector sensitivity', 'Emissions intensity', 'Sector benchmark', 'Normalized intensity', 'Plan relief', 'Displayed transition score']}
+            rows={selected.facilities.map(({ loan, transition }, index) => {
+              if (transition) return [loan.id, '—', '—', '—', '—', '—', `${scoreLabel(transition.score)} · ${transition.runId}`];
+              const inputs = transitionScoreInputs(loan);
+              return [loan.id, inputs.sensitivity.toFixed(3), loan.emissionsIntensity, inputs.sectorBenchmark, inputs.intensity.toFixed(3), pct(inputs.relief, 0), scoreLabel(transitionForDisplay[index])];
+            })} /></div>}
+        </section>
+
+        <section aria-labelledby="overall-method">
+          <h3 id="overall-method" className="mb-2 text-base font-semibold text-zinc-900">Overall climate risk</h3>
+          <p>For a borrower with multiple facilities, the physical component is the highest applicable site score and the transition component is the highest facility transition score. The demo overall score is the higher of these two components.</p>
+          <p className="mt-2">When every applicable site is verified, every facility has a verified Engine I score, and a GCB policy is configured, the overall score uses that policy. The available methods are the higher component or a weighted average using the configured physical weight and the remaining weight for transition risk.</p>
+          {selected && <p className="mt-2 font-medium">Selected profile · physical {scoreLabel(selected.physical)} · transition {scoreLabel(displayedTransition)} · overall {scoreLabel(displayedOverall)} · {selected.overall === null ? 'Demo maximum' : policy?.label}</p>}
+        </section>
+        </div>
       </Card>
+      </section>
     </>
   );
 }

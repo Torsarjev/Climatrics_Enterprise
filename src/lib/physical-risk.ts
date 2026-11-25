@@ -37,7 +37,7 @@ function assessSite(loan: Loan, kind: 'Facility' | 'Collateral', verifiedSite?: 
   const hazards = HAZARDS.map((hazard) => {
     const signal = hazardEvidence.find((item) => item.hazard === hazard);
     const intensity = clamp(region.hazard[hazard] * (signal ? 1 + signal.change : 1));
-    return { hazard, intensity, vulnerability: vulnerability[hazard], impact: intensity * exposure * vulnerability[hazard] };
+    return { hazard, intensity, regionalBaseline: region.hazard[hazard], multiplier: signal ? 1 + signal.change : 1, vulnerability: vulnerability[hazard], impact: intensity * exposure * vulnerability[hazard] };
   }).sort((a, b) => b.impact - a.impact);
   const score = 1 + 4 * (0.7 * hazards[0].impact + 0.3 * hazards.reduce((sum, item) => sum + item.impact, 0) / hazards.length);
   return {
