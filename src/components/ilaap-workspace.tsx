@@ -67,6 +67,7 @@ export function IlaapWorkspace({ assessment, history, view, user }: { assessment
           const evidence = lowest ?? rows[0];
           return {
             id: key, label: key === 'current' ? 'Current Policies' : label,
+            tone: lowest ? (lowest.stressed.lcr! < a.inputs.minimumLcrPct / 100 ? 'red' : 'green') : undefined,
             value: lowest ? ratio(lowest.stressed.lcr) : rows.length ? 'No net outflows' : 'Not run',
             sub: lowest ? `${lowest.macro.year} · Baseline ${ratio(lowest.baseline.lcr)} · ${lowest.stressed.lcr! < a.inputs.minimumLcrPct / 100 ? 'Below' : 'Meets'} model minimum ${pct(a.inputs.minimumLcrPct / 100)}` : undefined,
             evidence: evidence ? <>
