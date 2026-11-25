@@ -15,7 +15,7 @@ export function IcaapWorkspace({ runs, history, assessment, user }: {
     const batches = [...new Set(eligible.map((run) => run.batchId!))].flatMap((id) => {
       const rows = eligible.filter((run) => run.batchId === id);
       if (rows.length !== years.length || years.some((year) => !rows.some((run) => run.input.horizon === year)) || rows.some((run) => run.status === 'rejected')) return [];
-      return [{ id, label: `${rows.at(-1)!.id}–${rows[0].id} · ${rows[0].datasetId} · ${rows[0].input.approach} · ${rows.every((run) => run.status === 'approved') ? 'approved' : 'review pending'}` }];
+      return [{ id, datasetHash: rows[0].datasetHash, paramsHash: rows[0].paramsHash, approach: rows[0].input.approach, label: `${rows.at(-1)!.id}–${rows[0].id} · ${rows[0].datasetId} · ${rows[0].input.approach} · ${rows.every((run) => run.status === 'approved') ? 'approved' : 'review pending'}` }];
     });
     return { key, name, years, batches };
   });
