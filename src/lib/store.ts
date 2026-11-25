@@ -13,6 +13,9 @@ import { sha256 } from './math';
 import { CALIBRATION_VERSION, REGRESSION_VERSION, activeCalibration, calibrate, calibrationMethod, CalibrationProfile, calibrationEvidence, ghanaShocks, readRegressionWindow, wdiRegression } from './calibration';
 import { ICAAP_VERSION, icaapBatchMismatch, projectCapital, readFinanceCsv, type FinancePeriod, type IcaapAssessment, type IcaapOpening, type IcaapSource } from './icaap';
 import { DEMO_TREASURY, ILAAP_BUCKETS, ILAAP_MODEL, projectLiquidity, readTreasuryInputs, type IlaapActions, type IlaapAssessment } from './ilaap';
+import { assessPortfolio, HIGH_PHYSICAL_RISK } from './physical-risk';
+import { financedBook } from './emissions';
+import { FRAMEWORKS, REQUIREMENTS, REGISTER_VERSION, disclosureGaps, type DisclosureEvidence, type Framework, type RegulatoryPack, type SourceEvidence } from './regulatory';
 import { scenarioReporting } from './scenario-report';
 import { readBenchmark } from './regression-models';
 import { readMatchedEvidence } from './calibration-regression';
@@ -72,7 +75,7 @@ export interface CalibrationExecution {
   decision?: { action: 'activate' | 'decline'; by: string; at: string; note: string };
 }
 
-interface Db { ilaap?: IlaapAssessment[]; icaap?: IcaapAssessment[]; calibration?: CalibrationProfile; calibrationExecutions?: CalibrationExecution[]; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
+interface Db { regulatory?: RegulatoryPack[]; ilaap?: IlaapAssessment[]; icaap?: IcaapAssessment[]; calibration?: CalibrationProfile; calibrationExecutions?: CalibrationExecution[]; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
 
 const g = globalThis as unknown as { __db?: Db; __loans?: Map<string, Loan[]>; __runs?: Map<string, StressRun> };
 g.__loans ??= new Map();
@@ -567,6 +570,191 @@ export async function reviewIlaap(id: string, decision: string, note: string, ap
       ...entry, status, ...(decision === 'submit' ? {} : { reviewer: user.name, reviewedAt: at, note, approvalReference }),
     } : entry), audit: [{ at, by: user.name, action: `ilaap.${status}`, target: id, detail: [approvalReference || note, decision === 'approve' && record.illustrative ? 'approved on illustrative Treasury data' : ''].filter(Boolean).join(' · ') }, ...current.audit] };
   });
+}
+
+export function regulatorySources(data: Db): SourceEvidence[] {
+  const sources: SourceEvidence[] = [];
+  for (const record of data.runs.filter((item) => item.status === 'approved')) {
+    sources.push({ id: record.id, kind: 'stress', label: `${record.id} · ${P.scenarioOf(record.input.scenario).name} · ${record.input.horizon}`,
+      provider: 'Engine III', uri: `/runs/${record.id}`, hash: record.outputHash,
+      version: `${record.datasetId} · ${record.input.scenario} · ${record.modelVersion} · ${record.input.calibration?.id ?? 'bundled'}`,
+      units: 'GHS ECL and exposure', resolution: `Portfolio · scenario year ${record.input.horizon}`, methodology: record.input.approach,
+      metrics: [{ label: 'Baseline ECL', value: record.headline.ecl, unit: 'GHS' }, { label: 'Stressed ECL', value: record.headline.eclStressed, unit: 'GHS' }],
+      limitations: 'Conditional stress on the saved portfolio. Verify reporting-period relevance.', sourceApproval: 'approved', sourceReviewer: record.reviewedBy ?? '' });
+  }
+  for (const record of (data.screenRuns ?? []).filter((item) => item.status === 'approved')) {
+    sources.push({ id: record.id, kind: 'screening', label: `${record.id} · facility ${record.facilityId}`,
+      provider: 'Engine I', uri: `/screening/${record.id}`, hash: record.rulesHash, version: `${record.datasetId ?? 'standalone'} · ${Object.values(record.versions).join(' / ')}`,
+      units: 'Framework outcomes', resolution: `Facility · ${record.createdAt.slice(0, 10)}`, methodology: 'Approved borrower screening across ESMS, NDC, taxonomy and SDG',
+      limitations: 'Facility-level evidence. Review portfolio coverage separately. Hash identifies the rule set.', sourceApproval: 'approved', sourceReviewer: record.reviewedBy ?? '' });
+  }
+  for (const record of (data.icaap ?? []).filter((item) => item.status === 'approved' && !item.opening.illustrative)) {
+    sources.push({ id: record.id, kind: 'capital', label: `${record.opening.entity} · ICAAP · ${record.opening.asOf}`, provider: 'Climate ICAAP',
+      uri: `/capital?assessment=${record.id}`, hash: record.evidenceHash, version: `${record.version} · ${record.datasetId} · ${[...new Set(record.rows.map((row) => row.source.batchId))].join(', ')}`,
+      units: 'GHS and capital ratios', resolution: 'Legal entity · scenario and reporting period', methodology: 'ECL stock-to-flow and capital roll-forward',
+      metrics: record.rows.map((row) => ({ label: `${row.pathway} ${row.source.year} · stressed total capital ratio`, value: 100 * row.stressed.totalRatio, unit: '%' })),
+      limitations: 'Uses the selected finance scope, model limits and source batches.', sourceApproval: 'approved', sourceReviewer: record.reviewer ?? '' });
+  }
+  for (const record of (data.ilaap ?? []).filter((item) => item.status === 'approved' && !item.illustrative)) {
+    sources.push({ id: record.id, kind: 'liquidity', label: `${record.inputs.entity} · ILAAP · ${record.inputs.asOf}`, provider: 'Climate ILAAP',
+      uri: `/liquidity?assessment=${record.id}`, hash: record.hash, version: `${record.version} · ${record.calibration} · ${[...new Set(record.rows.map((row) => row.macro.scenario))].join(', ')}`,
+      units: 'GHS, days and LCR proxy', resolution: 'One GHS entity · scenario year and cash-flow bucket', methodology: 'Duration/convexity, behavioural runoff and contingency funding',
+      metrics: record.rows.flatMap((row) => row.stressed.lcr === null ? [] : [{ label: `${P.scenarioOf(row.macro.scenario).name} ${row.macro.year} · stressed LCR proxy`, value: 100 * row.stressed.lcr, unit: '%' }]),
+      limitations: 'LCR is a model proxy. Check Treasury and regulatory treatment.', sourceApproval: 'approved', sourceReviewer: record.reviewer ?? '' });
+  }
+  return sources;
+}
+
+export async function createRegulatoryPack(form: FormData) {
+  const user = await currentUser();
+  if (!user.can.includes('run' as never)) throw new Error('Only an analyst can create a disclosure draft.');
+  const entity = requireRegulatoryText(form, 'entity', 160);
+  const periodStart = requireRegulatoryText(form, 'periodStart', 10), periodEnd = requireRegulatoryText(form, 'periodEnd', 10);
+  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  if (!validDate(periodStart) || !validDate(periodEnd) || periodStart > periodEnd) throw new Error('Enter a valid reporting period.');
+  const choices = new Set(form.getAll('framework'));
+  const frameworks = (Object.keys(FRAMEWORKS) as Framework[]).filter((key) => choices.has(key));
+  if (!frameworks.length || frameworks.length !== choices.size) throw new Error('Select at least one supported framework.');
+  const id = `REG-${randomUUID()}`, at = now();
+  const pack: RegulatoryPack = { id, revision: 1, version: REGISTER_VERSION, frameworks, standards: FRAMEWORKS,
+    entity, periodStart, periodEnd, by: user.name, at, status: 'draft',
+    rows: REQUIREMENTS.filter((row) => frameworks.includes(row.framework)).map((requirement) => ({
+      requirement, owner: requirement.owner, applicability: 'pending', rationale: '', narrative: '', evidence: [],
+    })) };
+  await updateCalibrationStore((current) => ({ ...current, regulatory: [pack, ...(current.regulatory ?? [])],
+    audit: [{ at, by: user.name, action: 'regulatory.created', target: id, detail: pack.version }, ...current.audit] }));
+  return id;
+}
+
+function requireRegulatoryText(form: FormData, key: string, max: number, optional = false) {
+  const value = String(form.get(key) ?? '').trim();
+  if ((!value && !optional) || value.length > max) throw new Error(`Check ${key} (maximum ${max} characters).`);
+  return value;
+}
+
+export async function saveDisclosureRow(id: string, form: FormData) {
+  const user = await currentUser();
+  if (!user.can.includes('run' as never)) throw new Error('Only an analyst can edit a draft.');
+  const requirementId = String(form.get('requirement') ?? '');
+  const applicability = form.get('applicability');
+  if (applicability !== 'pending' && applicability !== 'applicable' && applicability !== 'not-applicable') throw new Error('Choose applicability.');
+  const owner = requireRegulatoryText(form, 'owner', 160);
+  const rationale = requireRegulatoryText(form, 'rationale', 2000, applicability !== 'not-applicable');
+  const narrative = requireRegulatoryText(form, 'narrative', 12000, true);
+  const sourceId = String(form.get('source') ?? '');
+  const remove = String(form.get('remove') ?? '');
+  const kind = String(form.get('kind') ?? '');
+  const data = await db();
+  const draft = data.regulatory?.find((item) => item.id === id);
+  const row = draft?.rows.find((item) => item.requirement.id === requirementId);
+  if (!draft || draft.by !== user.name || draft.status !== 'draft' || !row) throw new Error('The maker can edit an open draft.');
+  let source: SourceEvidence | undefined;
+  if (sourceId === 'physical-snapshot' || sourceId === 'emissions-snapshot') {
+    const { dataset, loans } = await activeLoans();
+    const physical = sourceId === 'physical-snapshot';
+    const base = { id: `${sourceId}-${dataset.id}`, provider: physical ? 'Engine II' : 'Engine V',
+      uri: physical ? '/physical' : '/emissions', hash: dataset.hash, version: `${dataset.id} · ${physical ? P.HAZARD_DATA_VERSION : 'PCAF demo methodology'}`,
+      resolution: 'Active loan book at retrieval · portfolio', sourceApproval: 'documentary' as const, sourceReviewer: '' };
+    if (physical) {
+      const { borrowers } = assessPortfolio(loans, data.screenRuns ?? [], dataset.id);
+      const amount = borrowers.filter((item) => item.physical !== null && item.physical >= HIGH_PHYSICAL_RISK).reduce((sum, item) => sum + item.ead, 0);
+      source = { ...base, kind: 'physical', label: `High physical risk exposure · GHS ${amount.toFixed(2)}`,
+        units: 'GHS', metrics: [{ label: 'High physical risk exposure', value: amount, unit: 'GHS' }], methodology: 'Engine II borrower physical score threshold applied to outstanding exposure',
+        limitations: 'Modelled exposure with location proxies. Reviewer must confirm period, scope and materiality.' };
+    } else {
+      const book = financedBook(loans);
+      source = { ...base, kind: 'emissions', label: `Estimated financed emissions · ${book.total.toFixed(2)} tCO₂e`,
+        units: 'tCO₂e', metrics: [{ label: 'Financed emissions', value: book.total, unit: 'tCO₂e' }], methodology: 'Portfolio financed emissions estimate',
+        limitations: 'Uses inferred financial and emissions inputs. Review coverage, data quality and own-operation emissions separately.' };
+    }
+  } else if (sourceId) {
+    source = regulatorySources(data).find((item) => item.id === sourceId);
+    if (!source) throw new Error('Select an approved source record.');
+  } else if (kind) {
+    const evidenceKind = row.requirement.evidence.find((item) => item === kind);
+    if (!evidenceKind) throw new Error('Choose an evidence type listed for this requirement.');
+    const uri = requireRegulatoryText(form, 'uri', 500, true);
+    const hash = requireRegulatoryText(form, 'hash', 64, true);
+    if ((!uri && !hash) || (uri && !/^https:\/\/[^\s]+$/i.test(uri)) || (hash && !/^[0-9a-f]{64}$/i.test(hash))) {
+      throw new Error('Enter an HTTPS document URI or a 64-character SHA-256 hash.');
+    }
+    source = {
+      id: `DOC-${randomUUID()}`, kind: evidenceKind, uri, hash,
+      label: requireRegulatoryText(form, 'label', 160), provider: requireRegulatoryText(form, 'provider', 160),
+      version: requireRegulatoryText(form, 'sourceVersion', 240), units: requireRegulatoryText(form, 'units', 100),
+      resolution: requireRegulatoryText(form, 'resolution', 240), methodology: requireRegulatoryText(form, 'methodology', 800),
+      limitations: requireRegulatoryText(form, 'limitations', 800), sourceApproval: 'documentary', sourceReviewer: '',
+    };
+  }
+  if (source && !row.requirement.evidence.includes(source.kind)) throw new Error('This evidence type does not match the requirement.');
+  const retention = source ? requireRegulatoryText(form, 'retention', 120) : '';
+  const at = now();
+  await updateCalibrationStore((current) => {
+    const pack = current.regulatory?.find((item) => item.id === id);
+    if (!pack || pack.status !== 'draft' || pack.by !== user.name) throw new Error('This disclosure is no longer editable.');
+    if (source?.sourceApproval === 'approved' && !regulatorySources(current).some((item) => item.id === source!.id && item.hash === source!.hash)) {
+      throw new Error('The source approval or fingerprint changed.');
+    }
+    const rows: RegulatoryPack['rows'] = pack.rows.map((item) => item.requirement.id !== requirementId ? item : {
+      ...item, owner, applicability, rationale, narrative,
+      evidence: [
+        ...item.evidence.filter((entry) => entry.id !== remove && entry.id !== source?.id).map<DisclosureEvidence>((entry) => ({ ...entry, controlOwner: owner, applicability })),
+        ...(source ? [{ ...source, requirementId, standardVersion: pack.standards[item.requirement.framework].version,
+          reportingEntity: pack.entity, periodStart: pack.periodStart, periodEnd: pack.periodEnd, retrievedAt: at,
+          applicability, controlOwner: owner, linkedDisclosure: `${id}#${requirementId}`, retention, approvalState: 'pending' } satisfies DisclosureEvidence] : []),
+      ],
+    });
+    return { ...current, regulatory: current.regulatory?.map((entry) => entry.id === id ? { ...pack, rows } : entry),
+      audit: [{ at, by: user.name, action: 'regulatory.evidence_saved', target: id, detail: `${requirementId}${source ? ` · ${source.id}` : ''}` }, ...current.audit] };
+  });
+}
+
+export async function reviewRegulatoryPack(id: string, form: FormData) {
+  const user = await currentUser();
+  const decision = String(form.get('decision') ?? '');
+  const note = requireRegulatoryText(form, 'note', 2000, decision !== 'return');
+  const signoff = form.get('confirmScope') === 'yes';
+  const at = now();
+  const d = await db();
+  const prior = d.regulatory?.find((entry) => entry.id === id);
+  const hash = prior && await sha256(JSON.stringify({ rows: prior.rows, standards: prior.standards, version: prior.version, entity: prior.entity, periodStart: prior.periodStart, periodEnd: prior.periodEnd }));
+  let result = id;
+  await updateCalibrationStore((current) => {
+    const pack = current.regulatory?.find((entry) => entry.id === id);
+    if (!pack || !prior) throw new Error('Disclosure pack unavailable.');
+    if (decision === 'revise') {
+      if (!user.can.includes('run' as never) || pack.by !== user.name || !['returned', 'approved'].includes(pack.status)) throw new Error('Only the maker can revise a completed review.');
+      result = `REG-${randomUUID()}`;
+      const copy: RegulatoryPack = { ...pack, id: result, previousId: id, revision: pack.revision + 1,
+        status: 'draft', at, reviewedAt: undefined, reviewer: undefined, reviewNote: undefined, hash: undefined,
+        rows: pack.rows.map((row) => ({ ...row, evidence: row.evidence.map((item) => ({
+          ...item, linkedDisclosure: `${result}#${item.requirementId}`, reviewer: undefined, approvalState: 'pending',
+        })) })) };
+      return { ...current, regulatory: [copy, ...(current.regulatory ?? [])],
+        audit: [{ at, by: user.name, action: 'regulatory.revised', target: result, detail: id }, ...current.audit] };
+    }
+    if (decision === 'submit') {
+      if (!user.can.includes('run' as never) || pack.by !== user.name || pack.status !== 'draft') throw new Error('Only the maker can submit a draft.');
+    } else if (!['approve', 'return'].includes(decision) || !user.can.includes('approve' as never) || pack.by === user.name || pack.status !== 'submitted') {
+      throw new Error('An independent checker must review the submitted pack.');
+    }
+    if (decision === 'approve') {
+      if (!signoff || !pack.rows.some((row) => row.applicability === 'applicable') || pack.rows.some((row) => disclosureGaps(row).length)) throw new Error('Resolve all requirements and confirm the legal scope, reporting period and evidence before publication sign-off.');
+      const sources = regulatorySources(current);
+      if (pack.rows.some((row) => row.evidence.some((item) => item.sourceApproval === 'approved' && !sources.some((source) => source.id === item.id && source.hash === item.hash)))) {
+        throw new Error('An upstream approval or fingerprint changed. Return the pack for revision.');
+      }
+      if (JSON.stringify(pack.rows) !== JSON.stringify(prior.rows)) throw new Error('The disclosure evidence changed. Reload before sign-off.');
+    }
+    const status = decision === 'submit' ? 'submitted' : decision === 'approve' ? 'approved' : 'returned';
+    const updated: RegulatoryPack = { ...pack, status, ...(decision !== 'submit' ? { reviewer: user.name, reviewedAt: at, reviewNote: note } : {}),
+      ...(decision === 'approve' ? { hash, rows: pack.rows.map((row) => ({ ...row, evidence: row.evidence.map((item) => ({
+        ...item, reviewer: user.name, approvalState: 'approved' as const,
+      })) })) } : {}) };
+    return { ...current, regulatory: current.regulatory?.map((entry) => entry.id === id ? updated : entry),
+      audit: [{ at, by: user.name, action: `regulatory.${status}`, target: id, detail: hash ? `${note} · ${hash}` : note }, ...current.audit] };
+  });
+  return result;
 }
 
 export async function scenarioBatchRuns(id: string) {
