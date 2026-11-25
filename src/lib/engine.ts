@@ -35,11 +35,16 @@ export function collateralHaircut(loan: Loan, multiplier: number) {
   return clamp(Math.max(...HAZARDS.map((h) => clamp(reg.hazard[h] * multiplier) * v[h])) * 0.35 * intensification(multiplier), 0, 0.5);
 }
 
-export function transitionScore(loan: Loan, shock: number) {
+export function transitionScoreInputs(loan: Loan) {
   const sec = sectorOf(loan.sector);
   const intensity = clamp(loan.emissionsIntensity / (sec.carbonIntensity * 1.4));
   const relief = loan.transitionPlan ? CREDIT.transitionReadinessRelief : 0;
-  return clamp(sec.transition * shock * (0.6 + 0.4 * intensity) * (1 - relief));
+  return { sensitivity: sec.transition, sectorBenchmark: sec.carbonIntensity, intensity, relief };
+}
+
+export function transitionScore(loan: Loan, shock: number) {
+  const { sensitivity, intensity, relief } = transitionScoreInputs(loan);
+  return clamp(sensitivity * shock * (0.6 + 0.4 * intensity) * (1 - relief));
 }
 
 export function runStress(loans: Loan[], input: RunInput) {
