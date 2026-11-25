@@ -83,7 +83,7 @@ export function DisclosureEditor({ pack, row, sources, example }: { pack: string
   </form>;
 }
 
-export function RegulatoryReview({ id, mode }: { id: string; mode: 'submit' | 'review' | 'revise' }) {
+export function RegulatoryReview({ id, mode }: { id: string; mode: 'submit' | 'review' | 'revise' | 'upgrade' }) {
   const [state, action, pending] = useActionState(reviewRegulatoryAction, null);
   return <form action={action} className="space-y-3">
     <input type="hidden" name="pack" value={id} />
@@ -94,7 +94,7 @@ export function RegulatoryReview({ id, mode }: { id: string; mode: 'submit' | 'r
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirmScope" value="yes" />I confirm reporting scope, applicability, evidence relevance, and the applicable legal and compliance review.</label>
       <label className="block text-sm font-medium">Review note<textarea name="note" rows={2} maxLength={2000} className={field} /></label>
     </> : <input type="hidden" name="decision" value={mode} />}
-    <button className={btnClass} disabled={pending}>{mode === 'review' ? 'Record decision' : mode === 'revise' ? 'Create a new revision' : 'Submit for independent review'}</button>
+    <button className={btnClass} disabled={pending}>{mode === 'review' ? 'Record decision' : mode === 'upgrade' ? 'Create revision using expanded BoG register' : mode === 'revise' ? 'Create a new revision' : 'Submit for independent review'}</button>
     {errorText(state)}
   </form>;
 }

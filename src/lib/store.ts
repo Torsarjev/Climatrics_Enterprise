@@ -722,12 +722,20 @@ export async function reviewRegulatoryPack(id: string, form: FormData) {
   await updateCalibrationStore((current) => {
     const pack = current.regulatory?.find((entry) => entry.id === id);
     if (!pack || !prior) throw new Error('Disclosure pack unavailable.');
-    if (decision === 'revise') {
-      if (!user.can.includes('run' as never) || pack.by !== user.name || !['returned', 'approved'].includes(pack.status)) throw new Error('Only the maker can revise a completed review.');
+    if (decision === 'revise' || decision === 'upgrade') {
+      const upgrade = pack.frameworks.includes('bog') && pack.version !== REGISTER_VERSION;
+      const eligible = decision === 'upgrade' ? upgrade && pack.status === 'draft' : ['returned', 'approved'].includes(pack.status);
+      if (!user.can.includes('run' as never) || pack.by !== user.name || !eligible) throw new Error('Only the maker can revise this pack.');
+      const mapped = upgrade ? REQUIREMENTS.filter((requirement) => pack.frameworks.includes(requirement.framework)).map((requirement) => {
+        const existing = pack.rows.find((row) => row.requirement.id === requirement.id);
+        return existing ? { ...existing, requirement } : {
+          requirement, owner: requirement.owner, applicability: 'pending' as const, rationale: '', narrative: '', evidence: [],
+        };
+      }) : pack.rows;
       result = `REG-${randomUUID()}`;
-      const copy: RegulatoryPack = { ...pack, id: result, previousId: id, revision: pack.revision + 1,
+      const copy: RegulatoryPack = { ...pack, id: result, previousId: id, revision: pack.revision + 1, version: upgrade ? REGISTER_VERSION : pack.version,
         status: 'draft', at, reviewedAt: undefined, reviewer: undefined, reviewNote: undefined, hash: undefined,
-        rows: pack.rows.map((row) => ({ ...row, evidence: row.evidence.map((item) => ({
+        rows: mapped.map((row) => ({ ...row, evidence: row.evidence.map((item) => ({
           ...item, linkedDisclosure: `${result}#${item.requirementId}`, reviewer: undefined, approvalState: 'pending',
         })) })) };
       return { ...current, regulatory: [copy, ...(current.regulatory ?? [])],
@@ -739,6 +747,7 @@ export async function reviewRegulatoryPack(id: string, form: FormData) {
       throw new Error('An independent checker must review the submitted pack.');
     }
     if (decision === 'approve') {
+      if (pack.frameworks.includes('bog') && pack.version !== REGISTER_VERSION) throw new Error('Return this pack to the maker to revise it against the expanded BoG register.');
       if (!signoff || !pack.rows.some((row) => row.applicability === 'applicable') || pack.rows.some((row) => disclosureGaps(row).length)) throw new Error('Resolve all requirements and confirm the legal scope, reporting period and evidence before publication sign-off.');
       const sources = regulatorySources(current);
       if (pack.rows.some((row) => row.evidence.some((item) => item.sourceApproval === 'approved' && !sources.some((source) => source.id === item.id && source.hash === item.hash)))) {

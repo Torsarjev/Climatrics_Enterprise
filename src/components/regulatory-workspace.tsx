@@ -28,7 +28,9 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
   const gaps = total - complete - excluded;
   const selected = register.find((item) => item.id === requirement);
   const selectedRow = pack?.rows.find((row) => row.requirement.id === requirement);
-  const example = selected ? MOCK_DISCLOSURES[selected.id] : undefined;
+  const example = selected ? MOCK_DISCLOSURES[selected.id] ?? (selected.framework === 'bog'
+    ? `For [[reporting period]], [[responsible function]] assessed ${selected.title.toLowerCase()}. The verified position was [[finding, metric and denominator where applicable]]. Management recorded [[decision or action]] in [[source evidence and date]]. The main limitation was [[data, scope or methodology limitation]].` : undefined) : undefined;
+  const olderBog = !!pack && pack.frameworks.includes('bog') && pack.version !== REGISTER_VERSION;
   const sourceFramework = selected ? (pack?.standards ?? FRAMEWORKS)[selected.framework] : undefined;
   const route = (overrides: Record<string, string> = {}) => `/reports?${new URLSearchParams({
     ...(pack ? { pack: pack.id } : {}), ...(standard ? { standard } : {}), ...(filter ? { filter } : {}), ...overrides,
@@ -54,9 +56,15 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
       <div className="my-4 flex flex-wrap gap-4 text-sm">
         <a className="underline" href={`/api/regulatory?id=${pack.id}`}>Export evidence and audit JSON</a>
         <a className="underline" href={`/api/regulatory?id=${pack.id}&format=csv`}>Download disclosure schedule CSV</a>
-        {pack.status === 'approved' && <a className="underline" href={`/api/regulatory?id=${pack.id}&format=publication`}>Download signed publication pack</a>}
+        {pack.status === 'approved' && <>
+          <a className="underline" href={`/api/regulatory?id=${pack.id}&format=preview`}>View signed report</a>
+          <a className="underline" href={`/api/regulatory?id=${pack.id}&format=docx`}>Download Word</a>
+          <a className="underline" href={`/api/regulatory?id=${pack.id}&format=pdf-view`}>View PDF</a>
+          <a className="underline" href={`/api/regulatory?id=${pack.id}&format=pdf`}>Download PDF</a>
+        </>}
       </div>
-      {mayEdit && <RegulatoryReview id={pack.id} mode="submit" />}
+      {olderBog && <p className="mb-3 text-sm text-amber-800">This pack uses an earlier BoG register. A new revision includes the expanded clause list. Review new clauses separately and consult the previous revision for grouped evidence.</p>}
+      {mayEdit && <RegulatoryReview id={pack.id} mode={olderBog ? 'upgrade' : 'submit'} />}
       {checker && pack.status === 'submitted' && pack.by !== user.name && <RegulatoryReview id={pack.id} mode="review" />}
       {maker && pack.by === user.name && (pack.status === 'returned' || pack.status === 'approved') && <RegulatoryReview id={pack.id} mode="revise" />}
     </Card>}
@@ -82,7 +90,7 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
         const entry = pack?.rows.find((item) => item.requirement.id === row.id);
         const missing = statusById.get(row.id);
         return [
-          `${(pack?.standards ?? FRAMEWORKS)[row.framework].title} · ${row.paragraph}`,
+          [ (pack?.standards ?? FRAMEWORKS)[row.framework].title, row.section, row.paragraph ].filter(Boolean).join(' · '),
           <Link key={row.id} className="font-medium underline" href={route({ requirement: row.id }) + '#requirement-detail'}>{row.title}</Link>,
           entry?.owner ?? row.owner,
           missing ? (missing.length ? `${missing.length} open · ${missing.join(', ')}` : entry?.applicability === 'not-applicable' ? 'Excluded · rationale recorded' : 'Ready') :
@@ -92,7 +100,7 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
     </Card>
 
     {selected && sourceFramework && <div id="requirement-detail" className="mb-6 scroll-mt-5">
-      <Card title={selected.title} note={`${sourceFramework.title} · ${selected.paragraph}`}>
+      <Card title={selected.title} note={[sourceFramework.title, selected.section, selected.paragraph].filter(Boolean).join(' · ')}>
         <p className="text-sm">{selected.pillar} · {sourceFramework.version} · <a href={sourceFramework.uri} className="underline">Source standard or directive</a></p>
         <p className="mt-2 text-sm">Mapped evidence · {selected.evidence.map((kind) => EVIDENCE_KIND[kind]).join(' · ')}</p>
         {example && <section aria-label="Mock disclosure" className="mt-4 rounded-lg border border-lime-300 bg-lime-50 p-4 text-sm">

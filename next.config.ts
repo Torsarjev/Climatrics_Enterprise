@@ -10,6 +10,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  serverExternalPackages: ['pdfkit'],
+  outputFileTracingIncludes: { '/api/regulatory': ['./assets/report-fonts/*.ttf'] },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

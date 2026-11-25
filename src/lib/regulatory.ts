@@ -1,5 +1,6 @@
+import { BOG_REQUIREMENTS } from './bog-register';
 import { hasMockPlaceholders } from './mock-disclosures';
-export const REGISTER_VERSION = 'engine-iv-2026.11.1';
+export const REGISTER_VERSION = 'engine-iv-2026.11.2';
 export const FRAMEWORKS = {
   s1: { title: 'IFRS S1', version: 'ISSB June 2023', uri: 'https://www.ifrs.org/issued-standards/ifrs-sustainability-standards-navigator/ifrs-s1-general-requirements/' },
   s2: { title: 'IFRS S2', version: 'ISSB June 2023 · see December 2025 amendments', uri: 'https://www.ifrs.org/issued-standards/ifrs-sustainability-standards-navigator/ifrs-s2-climate-related-disclosures/' },
@@ -20,7 +21,7 @@ export const EVIDENCE_KIND: Record<EvidenceKind, string> = {
   emissions: 'Emissions evidence', targets: 'Targets and progress', control: 'Review and control evidence', bank: 'Bank disclosure or policy evidence',
 };
 export interface Requirement {
-  id: string; framework: Framework; paragraph: string; pillar: string; title: string;
+  id: string; framework: Framework; section?: string; paragraph: string; pillar: string; title: string;
   owner: string; evidence: EvidenceKind[];
 }
 const rows: [Framework, string, string, string, string, EvidenceKind[]][] = [
@@ -45,21 +46,10 @@ const rows: [Framework, string, string, string, string, EvidenceKind[]][] = [
   ['s2','29(b)–(d)','Metrics and targets','Transition, physical and opportunity exposures','Climate Risk',['screening','physical']],
   ['s2','29(e)–(g), 32','Metrics and targets','Capital deployment, internal carbon prices, remuneration and industry metrics','Finance / Sustainability',['bank']],
   ['s2','33–37','Metrics and targets','Climate targets, monitoring and performance','Sustainability',['targets']],
-  ['bog','21–28','Governance','Board and senior management oversight and risk appetite','Company Secretariat',['board','bank']],
-  ['bog','29–30','Internal controls','Climate-related controls and independent assurance','Internal Audit',['control']],
-  ['bog','31–33','Capital and liquidity','Climate risk in ICAAP and ILAAP','Treasury / Risk',['capital','liquidity']],
-  ['bog','34–35','Risk management','Identify, assess and manage material risks','Enterprise Risk',['screening','physical']],
-  ['bog','36','Monitoring','Indicators, data controls and management reporting','Enterprise Risk',['physical','control']],
-  ['bog','37–38','Risk management','Climate drivers across financial risk categories','Enterprise Risk',['stress','bank']],
-  ['bog','39–40','Scenario analysis','Physical and transition scenario analysis','Climate Risk',['stress']],
-  ['bog','41–47','Prudential disclosures','Climate disclosure evidence','Compliance',['board','stress','emissions']],
-  ['bog','48(a)–(m)','Regulatory reporting','Supervisory information, exposures and assumptions','Compliance',['screening','physical','stress','bank']],
-  ['bog','49–50','Regulatory reporting','Transition plan submission and remediation of data gaps','Compliance',['capital','targets','control']],
-  ['bog','Part V','Transition plan','Transition planning and monitoring','Strategy',['bank','targets']],
 ];
-export const REQUIREMENTS: Requirement[] = rows.map(([framework, paragraph, pillar, title, owner, evidence]) => ({
+export const REQUIREMENTS: Requirement[] = [...rows.map(([framework, paragraph, pillar, title, owner, evidence]) => ({
   id: `${framework}-${paragraph}`, framework, paragraph, pillar, title, owner, evidence,
-}));
+})), ...BOG_REQUIREMENTS];
 
 export type Applicability = 'pending' | 'applicable' | 'not-applicable';
 export interface SourceEvidence {
