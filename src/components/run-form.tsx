@@ -52,8 +52,8 @@ export function RunForm({ pathways, calibration }: { pathways: Pathway[]; calibr
         </div>
       </fieldset>
       {selected.length > 0 && <div className="rounded-lg bg-lime-50 p-3" aria-label="Scenario variables by year">
-        <Table head={['Year', 'GDP', 'Inflation', 'Long-term rate', 'Carbon price', 'Extreme rainfall', 'Physical hazard']}
-          rows={selected.map(({ year, shocks }) => [year, `${shocks.gdp.toFixed(2)}%`, `${shocks.inflation.toFixed(2)} pp`, `${shocks.rate.toFixed(2)} pp`,
+        <Table head={['Year', 'GDP', 'Inflation', 'Long-term rate', 'Energy price', 'Carbon price', 'Extreme rainfall', 'Physical hazard']}
+          rows={selected.map(({ year, shocks }) => [year, `${shocks.gdp.toFixed(2)}%`, `${shocks.inflation.toFixed(2)} pp`, `${shocks.rate.toFixed(2)} pp`, shocks.energy ? `${shocks.energy.ghana.toFixed(2)}%` : 'Unavailable',
             `$${shocks.carbon.toFixed(2)}/t`, `×${shocks.flood.toFixed(3)}`, `×${shocks.physical.toFixed(3)}`])} />
       </div>}
       <button className={btnClass} disabled={pending || !selected.length}>{pending ? 'Calculating reporting years…' : `Run ${selected.length} reporting ${selected.length === 1 ? 'year' : 'years'}`}</button>
