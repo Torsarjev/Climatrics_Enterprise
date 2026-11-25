@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { activeLoans } from '@/lib/store';
-import { HORIZONS, Horizon, SCENARIOS, ScenarioKey, scenarioOf } from '@/lib/params';
+import { ScenarioKey, scenarioOf } from '@/lib/params';
+import { GCB_PATHWAYS } from '@/lib/gcb-scenarios';
+import { STAGED_ECL_MODEL } from '@/lib/staged-ecl';
 import { runCredit } from '@/lib/engine';
 import { Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
 import { delta, ghs, pct } from '@/lib/fmt';
@@ -8,17 +10,18 @@ import { delta, ghs, pct } from '@/lib/fmt';
 export const dynamic = 'force-dynamic';
 
 const FLOWS = [
-  { title: 'Top-down approach', sub: 'Portfolio-level assessment', steps: ['NGFS scenario', 'Ghana macroeconomic shocks', 'Sector-level sensitivities', 'Sector PD and LGD stress', 'Portfolio ECL', 'Capital adequacy impact'] },
+  { title: 'Top-down approach', sub: 'Portfolio-level assessment', steps: ['NGFS scenario', 'Ghana macroeconomic shocks', 'Sector-level sensitivities', 'Sector PD and LGD stress', 'Staged ECL', 'Portfolio aggregation'] },
   { title: 'Bottom-up approach', sub: 'Individual borrower assessment', steps: ['NGFS scenario', 'Borrower-specific climate shocks', 'Revenue, costs and collateral', 'Stressed CFADS and DSCR', 'Borrower PD, LGD and ECL', 'Aggregate portfolio impact'] },
 ];
 
 export default async function ComparePage({ searchParams }: { searchParams: Promise<{ scenario?: string; horizon?: string }> }) {
   const q = await searchParams;
-  const key = (SCENARIOS.some((s) => s.key === q.scenario) ? q.scenario : 'delayed') as ScenarioKey;
-  const horizon = (HORIZONS.includes(Number(q.horizon) as Horizon) ? Number(q.horizon) : 2050) as Horizon;
+  const pathway = GCB_PATHWAYS.find((item) => item.key === q.scenario) ?? GCB_PATHWAYS[2];
+  const { key } = pathway;
+  const horizon = pathway.years.includes(Number(q.horizon)) ? Number(q.horizon) : pathway.years.at(-1)!;
   const { loans } = await activeLoans();
-  const td = runCredit(loans, { scenario: key, horizon, approach: 'top-down' });
-  const bu = runCredit(loans, { scenario: key, horizon, approach: 'bottom-up' });
+  const td = runCredit(loans, { scenario: key, horizon, approach: 'top-down', eclModel: STAGED_ECL_MODEL });
+  const bu = runCredit(loans, { scenario: key, horizon, approach: 'bottom-up', eclModel: STAGED_ECL_MODEL });
   const G = bu.shocks;
   const rows = td.summary.bySector.map((t, i) => {
     const b = bu.summary.bySector[i];
@@ -30,7 +33,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
       : 'Sector sensitivity exceeds what borrower cash flows show';
     return { name: t.name, ead: t.ead, tdPd: t.pdStressed, buPd: b.pdStressed, tdEcl: t.eclStressed, buEcl: b.eclStressed, gap, why };
   });
-  const link = (k: ScenarioKey, h: Horizon) => `/compare?scenario=${k}&horizon=${h}`;
+  const link = (k: ScenarioKey, h: number) => `/compare?scenario=${k}&horizon=${h}`;
 
   return (
     <>
@@ -38,9 +41,9 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
 
       <Card>
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          {SCENARIOS.map((s) => <Link key={s.key} href={link(s.key, horizon)} className={`rounded-md px-2.5 py-1 ring-1 ${s.key === key ? 'bg-[#1b2c3e] text-white ring-[#1b2c3e]' : 'ring-zinc-300 hover:bg-zinc-100'}`}>{s.name}</Link>)}
+          {GCB_PATHWAYS.map((s) => <Link key={s.key} href={link(s.key, s.key === key ? horizon : s.years.at(-1)!)} className={`rounded-md px-2.5 py-1 ring-1 ${s.key === key ? 'bg-[#1b2c3e] text-white ring-[#1b2c3e]' : 'ring-zinc-300 hover:bg-zinc-100'}`}>{s.name}</Link>)}
           <span className="mx-2 text-zinc-300">|</span>
-          {HORIZONS.map((h) => <Link key={h} href={link(key, h)} className={`rounded-md px-2.5 py-1 ring-1 ${h === horizon ? 'bg-[#1b2c3e] text-white ring-[#1b2c3e]' : 'ring-zinc-300 hover:bg-zinc-100'}`}>{h}</Link>)}
+          {pathway.years.map((h) => <Link key={h} href={link(key, h)} className={`rounded-md px-2.5 py-1 ring-1 ${h === horizon ? 'bg-[#1b2c3e] text-white ring-[#1b2c3e]' : 'ring-zinc-300 hover:bg-zinc-100'}`}>{h}</Link>)}
         </div>
         <p className="mt-3 text-sm text-zinc-600">Ghana shocks for {scenarioOf(key).name} {horizon}: GDP {G.gdp.toFixed(1)}% · inflation {G.inflation >= 0 ? '+' : ''}{G.inflation.toFixed(1)} pp · long rate {G.rate >= 0 ? '+' : ''}{G.rate.toFixed(1)} pp · carbon ${G.carbon.toFixed(0)}/t · extreme rain ×{G.flood.toFixed(2)} · <Link href={`/calibration?scenario=${key}`} className="underline">how these were calibrated</Link></p>
       </Card>
@@ -61,8 +64,8 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
                 ))}
               </ol>
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <Stat label="One-year ECL" value={`${ghs(r.summary.ecl)} → ${ghs(r.summary.eclStressed)}`} sub={delta(r.summary.ecl, r.summary.eclStressed)} tone="bad" />
-                <Stat label="Capital ratio" value={`${pct(r.capital.carBefore)} → ${pct(r.capital.carAfter)}`} sub={`minimum ${pct(r.capital.minimum, 0)}`} tone={r.capital.carAfter < r.capital.minimum ? 'bad' : 'good'} />
+                <Stat label="Staged ECL" value={`${ghs(r.summary.ecl)} → ${ghs(r.summary.eclStressed)}`} sub={delta(r.summary.ecl, r.summary.eclStressed)} tone="bad" />
+                <Stat label="Weighted stressed LGD" value={pct(r.summary.lgdStressed, 2)} />
               </div>
             </section>
           );

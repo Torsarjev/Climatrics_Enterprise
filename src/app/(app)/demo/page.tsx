@@ -30,8 +30,8 @@ const steps = [
   {
     title: 'Show the capital and liquidity impact',
     href: '/capital',
-    link: 'Open ICAAP & ILAAP',
-    detail: 'Use the capital bridge to show how credit losses reach the capital ratio, then review the liquidity coverage ratio under stress.',
+    link: 'Open ICAAP',
+    detail: 'Use the capital bridge to show how credit losses reach the capital ratio, then open ILAAP to review the liquidity coverage ratio under stress.',
   },
   {
     title: 'Approve and reproduce the run',

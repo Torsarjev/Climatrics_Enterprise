@@ -1,21 +1,25 @@
 import Link from 'next/link';
 import { ghanaShocks, NGFS_RELEASE } from '@/lib/calibration';
 import { currentUser, db } from '@/lib/store';
-import { HORIZONS, SCENARIOS, scenarioOf } from '@/lib/params';
+import { scenarioOf } from '@/lib/params';
 import { Badge, Card, PageHead, Table } from '@/components/ui';
+import { GCB_PATHWAYS } from '@/lib/gcb-scenarios';
 import { RunForm } from '@/components/run-form';
-import { ghs, pct, when } from '@/lib/fmt';
+import { ghs, when } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StressPage() {
   const user = await currentUser();
   const d = await db();
+  const pathways = GCB_PATHWAYS.map(({ years, ...pathway }) => ({
+    ...pathway, points: years.map((year) => ({ year, shocks: ghanaShocks(pathway.key, year) })),
+  }));
   return (
     <>
-      <PageHead area="Engine III · Scenario analysis & stress testing" title="Stress test" intro="Choose an NGFS scenario and horizon. The engine translates the scenario into counterparty PD and LGD, recomputes IFRS 9 staging and ECL, simulates the loss distribution, and feeds ICAAP and ILAAP." />
+      <PageHead area="Engine III · Scenario analysis & stress testing" title="Climate scenarios & credit losses" intro="Select a GCB pathway, projection year and credit approach. Trace the scenario from Ghana-calibrated variables to facility PD, LGD, IFRS 9 stage and discounted ECL." />
       {user.can.includes('run' as never)
-        ? <Card title="New run"><RunForm scenarios={SCENARIOS.map(({ key, name, family }) => ({ key, name, family }))} horizons={HORIZONS} canRun /></Card>
+        ? <Card title="Run a GCB scenario"><RunForm pathways={pathways} /></Card>
         : user.can.includes('approve' as never)
           ? <Card title="Awaiting your approval" note="approvers review; analysts run">
               {d.runs.filter((r) => r.status === 'submitted').length === 0 ? <p className="text-sm text-zinc-500">No runs waiting for approval.</p> : (
@@ -25,26 +29,24 @@ export default async function StressPage() {
             </Card>
           : <Card title="New run"><p className="text-sm text-zinc-600">Read-only: auditors can inspect every run and its lineage but cannot start one. Switch to an analyst (Kofi Mensah) at the top right to run a stress test.</p></Card>}
 
-      <Card title="Ghana-calibrated NGFS scenarios" className="mt-6" note={<a href="/calibration" className="underline">method and NGFS source values</a>}>
-        <Table head={['Scenario', 'Family', ...HORIZONS.map((h) => `${h}`)]} rows={SCENARIOS.map((s) => [
-          s.name, s.family,
-          ...HORIZONS.map((h) => { const g = ghanaShocks(s.key, h); return <span key={h} className="text-xs tabular-nums">GDP {g.gdp.toFixed(1)}% · carbon ${g.carbon.toFixed(0)}/t · rain ×{g.flood.toFixed(2)}</span>; }),
+      <Card title="GCB pathway windows" className="mt-6" note={<Link href="/calibration" className="underline">Calibration and source data</Link>}>
+        <Table head={['Pathway', 'NGFS scenario', 'Eligible years']} rows={GCB_PATHWAYS.map((pathway) => [
+          pathway.label, pathway.name, `${pathway.years[0]}–${pathway.years.at(-1)}`,
         ])} />
-        <p className="mt-2 text-xs text-zinc-500">Source: {NGFS_RELEASE}; World Bank CCKP Ghana projections. GDP is the extra shortfall over the five years to the horizon, scaled for Ghana.</p>
+        <p className="mt-3 text-sm text-zinc-600">Source: {NGFS_RELEASE} and World Bank CCKP Ghana projections. The app linearly interpolates the five-year NGFS observations for annual runs. GDP uses the change in NGFS deviation over up to five years, with the lookback starting no earlier than 2025.</p>
       </Card>
 
-      <Card title="How the scenario reaches the balance sheet" className="mt-6">
-        <ol className="grid gap-3 text-sm md:grid-cols-5">
-          {[['Ghana calibration', 'NGFS regional shock × Ghana coefficient'], ['Borrower or sector', 'revenue, costs, collateral · or sector sensitivity'], ['PD', 'bottom-up: CFADS → DSCR → PD band · top-down: sector sensitivities'], ['LGD', 'flood depth → damage curve → lost recovery'], ['ECL → capital', 'one-year ECL, VaR, CAR, LCR']].map(([t, s], i) => (
-            <li key={t} className="rounded-md border border-zinc-200 p-3"><p className="font-semibold">{i + 1}. {t}</p><p className="mt-1 text-xs text-zinc-500">{s}</p></li>
-          ))}
+      <Card title="Credit loss workflow" className="mt-6">
+        <ol className="grid gap-3 text-sm md:grid-cols-4">
+          {['Select pathway and year', 'Stress borrower financials or sector rates', 'Recalculate PD, LGD and stage', 'Discount and aggregate ECL'].map((step) => <li key={step} className="rounded-lg bg-lime-50 p-3 font-medium">{step}</li>)}
         </ol>
+        <p className="mt-3 text-sm text-zinc-600">The scenario records provide inputs to <Link href="/capital" className="underline">ICAAP</Link> and <Link href="/liquidity" className="underline">ILAAP</Link>.</p>
       </Card>
 
       <Card title="Run history" className="mt-6">
         <Table head={['Run', 'Scenario', 'Horizon', 'Approach', 'ECL after', 'By', 'When', 'Status']} rows={d.runs.map((r) => [
           <Link key="a" href={`/runs/${r.id}`} className="font-mono text-xs underline">{r.id}</Link>, scenarioOf(r.input.scenario).name, r.input.horizon, r.input.approach,
-          `${ghs(r.headline.eclStressed)} (CAR ${pct(r.headline.carAfter)})`, r.by, when(r.createdAt),
+          ghs(r.headline.eclStressed), r.by, when(r.createdAt),
           <Badge key="s" tone={r.status === 'approved' ? 'green' : r.status === 'submitted' ? 'amber' : r.status === 'rejected' ? 'red' : 'zinc'}>{r.status}</Badge>,
         ])} />
       </Card>

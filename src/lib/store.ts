@@ -9,8 +9,13 @@ import { ScreenInput, type ScreenResult, neededEvidence, screen, validate } from
 import { CRITERIA, FRAMEWORK_VERSIONS, QUESTIONS } from './esg/rules';
 import * as P from './params';
 import { sha256 } from './math';
-import { ghanaShocks } from './calibration';
+import { CALIBRATION_VERSION, ghanaShocks } from './calibration';
+import { isGcbScenarioYear } from './gcb-scenarios';
+import { MAX_ECL_MATURITY, STAGED_ECL_MODEL } from './staged-ecl';
 import { onNetlify, readText, writeText } from './kv';
+import { CCKP } from '@/data/cckp';
+import { NGFS } from '@/data/ngfs';
+import { WORLD_BANK } from '@/data/worldbank';
 
 export const USERS = [
   { id: 'kofi', name: 'Kofi Mensah', role: 'Climate Risk Analyst', can: ['run', 'ingest'] },
@@ -109,25 +114,39 @@ export async function ingest(name: string, csv: string) {
   return id;
 }
 
-export async function getRun(id: string) {
+export async function getRun(id: string, includeLoans = false) {
   const d = await db();
   const rec = d.runs.find((r) => r.id === id);
   if (!rec) return null;
   if (!g.__runs!.has(id)) g.__runs!.set(id, runStress(await loadDataset(d, rec.datasetId), rec.input));
-  return { rec, run: g.__runs!.get(id)! };
+  return { rec, run: g.__runs!.get(id)!, loans: includeLoans ? await loadDataset(d, rec.datasetId) : undefined };
 }
 
 const outHash = (run: StressRun) => sha256(JSON.stringify(run.results.map((r) => [r.id, r.pdStressed.toFixed(8), r.lgdStressed.toFixed(8), r.eclStressed.toFixed(2)])) + JSON.stringify(run.lossDist.stressed.var999));
 
+async function runParamsHash(input: RunInput) {
+  const base = await paramsHash();
+  return input.eclModel ? sha256(JSON.stringify({ base, eclModel: input.eclModel, transmission: P.TRANSMISSION, damage: P.DEPTH_DAMAGE, calibration: CALIBRATION_VERSION, CCKP, NGFS, WORLD_BANK })) : base;
+}
+
 export async function createRun(input: RunInput) {
   const d = await db(), u = await currentUser();
   if (!u.can.includes('run' as never)) throw new Error('Your role cannot run stress tests');
+  if (!isGcbScenarioYear(input.scenario, input.horizon) || !['bottom-up', 'top-down'].includes(input.approach)) {
+    throw new Error('Select a GCB pathway, eligible year and assessment approach');
+  }
+  input = { ...input, eclModel: STAGED_ECL_MODEL };
   const { dataset, loans } = await activeLoans();
+  if (!loans.length) throw new Error('Load a loan book before running a scenario');
+  const invalidExposure = loans.find((loan) => !Number.isFinite(loan.ead) || loan.ead <= 0);
+  if (invalidExposure) throw new Error(`Review outstanding exposure for facility ${invalidExposure.id}`);
+  const invalid = loans.find((loan) => !Number.isFinite(loan.maturityYears) || loan.maturityYears <= 0 || loan.maturityYears > MAX_ECL_MATURITY || ![1, 2, 3].includes(loan.stage));
+  if (invalid) throw new Error(`Review remaining maturity (0 < years ≤ ${MAX_ECL_MATURITY}) and IFRS 9 stage for facility ${invalid.id}`);
   const run = runStress(loans, input);
   const id = `RUN-${String(d.runs.length + 1).padStart(4, '0')}`;
   const rec: RunRecord = {
     id, createdAt: now(), by: u.name, input, datasetId: dataset.id, datasetHash: dataset.hash,
-    modelVersion: P.MODEL_VERSION, hazardVersion: P.HAZARD_DATA_VERSION, paramsHash: await paramsHash(), outputHash: await outHash(run), seed: P.LOSS_DIST.seed,
+    modelVersion: run.modelVersion, hazardVersion: P.HAZARD_DATA_VERSION, paramsHash: await runParamsHash(input), outputHash: await outHash(run), seed: P.LOSS_DIST.seed,
     status: 'draft',
     headline: { ecl: run.summary.ecl, eclStressed: run.summary.eclStressed, carBefore: run.capital.carBefore, carAfter: run.capital.carAfter, lcrAfter: run.liquidity.lcrAfter, var999: run.lossDist.stressed.var999 },
   };
@@ -142,7 +161,7 @@ export async function reproduce(id: string) {
   const d = await db(), u = await currentUser();
   const rec = d.runs.find((r) => r.id === id)!;
   const run = runStress(await loadDataset(d, rec.datasetId), rec.input);
-  const [o, p] = [await outHash(run), await paramsHash()];
+  const [o, p] = [await outHash(run), await runParamsHash(rec.input)];
   const ok = o === rec.outputHash && p === rec.paramsHash;
   d.audit.unshift({ at: now(), by: u.name, action: 'run.reproduced', target: id, detail: ok ? 'Output hash matches: result reproduced exactly' : 'MISMATCH: inputs or parameters have changed' });
   await save(d);

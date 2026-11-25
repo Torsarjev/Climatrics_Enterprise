@@ -7,7 +7,7 @@ import { ghs, num, pct, s5 } from '@/lib/fmt';
 
 const grade = (pd: number) => (pd >= 1 ? 'D' : GRADES[gradeOf(pd)]);
 
-export function Explain({ r, loan, sector }: { r: LoanResult; loan?: Loan; sector?: SectorStress }) {
+export function Explain({ r, loan, sector, staged = false }: { r: LoanResult; loan?: Loan; sector?: SectorStress; staged?: boolean }) {
   const t = r.trace;
   const rows: React.ReactNode[][] = t ? [
     ['Start · Bank PD → implied DSCR (band table)', `${pct(r.pd, 2)} → ${t.dscr.toFixed(2)}×`],
@@ -23,7 +23,7 @@ export function Explain({ r, loan, sector }: { r: LoanResult; loan?: Loan; secto
     [<b key="p">5 PD from DSCR band</b>, <b key="pv">{r.pd >= 1 ? 'Default' : `${pct(r.pd, 2)} (${grade(r.pd)}) → ${pct(r.pdStressed, 2)} (${grade(r.pdStressed)})`}</b>],
     ['3 Collateral · 1-in-100-year flood at the site', t.floodDepth > 0 ? `${num(t.floodDepth, 2)} m · ${t.floodCurve} curve → ${pct(t.floodDamage, 0)} damage` : 'below event threshold'],
     ['5 LGD (bank LGD + lost recovery on damaged collateral)', `${pct(r.lgd)} → ${pct(r.lgdStressed)}`],
-    [<b key="e">5 One-year ECL = PD × LGD × EAD</b>, <b key="ev">{ghs(r.ecl)} → {ghs(r.eclStressed)}</b>],
+    [<b key="e">5 {staged ? 'Staged, discounted ECL' : 'One-year ECL = PD × LGD × EAD'}</b>, <b key="ev">{ghs(r.ecl)} → {ghs(r.eclStressed)}</b>],
   ] : sector ? [
     ['Approach', 'Top-down: sector shock, not borrower cash flows'],
     ['Sector PD (EAD-weighted)', `${pct(sector.pd, 2)} → ${pct(sector.pdS, 2)}`],
@@ -34,7 +34,7 @@ export function Explain({ r, loan, sector }: { r: LoanResult; loan?: Loan; secto
     ['+ Physical (sector score × added intensity)', `+${num(sector.parts.physical)}`],
     [<b key="p">Borrower PD scaled by the sector ratio</b>, <b key="pv">{r.pd >= 1 ? 'Default' : `${pct(r.pd, 2)} → ${pct(r.pdStressed, 2)}`}</b>],
     ['LGD (bank LGD + sector physical uplift)', `${pct(r.lgd)} → ${pct(r.lgdStressed)}`],
-    [<b key="e">One-year ECL = PD × LGD × EAD</b>, <b key="ev">{ghs(r.ecl)} → {ghs(r.eclStressed)}</b>],
+    [<b key="e">{staged ? 'Staged, discounted ECL' : 'One-year ECL = PD × LGD × EAD'}</b>, <b key="ev">{ghs(r.ecl)} → {ghs(r.eclStressed)}</b>],
   ] : [];
   return (
     <>
