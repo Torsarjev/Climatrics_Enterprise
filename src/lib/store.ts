@@ -34,7 +34,7 @@ export const USERS = [
 ] as const;
 export type User = (typeof USERS)[number];
 
-export interface Dataset { id: string; name: string; hash: string; uploadedAt: string; by: string; control: IngestResult['control']; rejected: IngestResult['rejected']; warnings: IngestResult['warnings'] }
+export interface Dataset { source?: string; sourceDigest?: string; rulesVersion?: string; id: string; name: string; hash: string; uploadedAt: string; by: string; control: IngestResult['control']; rejected: IngestResult['rejected']; warnings: IngestResult['warnings'] }
 export interface RunRecord {
   id: string; createdAt: string; by: string; input: RunInput; datasetId: string; datasetHash: string;
   modelVersion: string; hazardVersion: string; paramsHash: string; outputHash: string; seed: number;
@@ -86,25 +86,41 @@ const now = () => new Date().toISOString();
 
 export const paramsHash = () => sha256(JSON.stringify({ v: P.MODEL_VERSION, h: P.HAZARD_DATA_VERSION, R: P.REGIONS, S: P.SECTORS, C: P.COLLATERAL, SC: P.SCENARIOS, CR: P.CREDIT, L: P.LOSS_DIST, B: P.BANK }));
 
-async function loadDataset(db: Db, id: string, csv?: string) {
-  if (g.__loans!.has(id)) return g.__loans!.get(id)!;
-  const text = csv ?? (await readText(`${id}.csv`));
-  if (text == null) throw new Error(`Dataset ${id} is missing from storage`);
-  const loans = ingestCsv(text).accepted;
-  g.__loans!.set(id, loans);
+export async function verifyDataset(dataset: Dataset) {
+  const text = await readText(dataset.id + '.csv');
+  const observed = text === null ? null : await sha256(text);
+  return { expected: dataset.hash, observed, matches: observed === dataset.hash, checkedAt: now() };
+}
+
+async function loadDataset(db: Db, id: string) {
+  const dataset = db.datasets.find(record => record.id === id);
+  const text = await readText(id + '.csv');
+  if (!dataset || text === null || await sha256(text) !== dataset.hash) {
+    throw new Error('Loan book integrity check failed for ' + id + '. Review the stored extract in Data and model governance.');
+  }
+  const cached = g.__loans!.get(dataset.id);
+  if (cached) return cached;
+  const loans = ingestCsv(text, !!dataset.rulesVersion).accepted;
+  g.__loans!.set(dataset.id, loans);
   return loans;
 }
 
-async function addDataset(db: Db, name: string, csv: string, by: string) {
-  const res = ingestCsv(csv);
+async function prepareDataset(db: Db, name: string, csv: string, by: string, source: string, sourceDigest?: string): Promise<Dataset> {
   const hash = await sha256(csv);
-  const id = `DS-${hash.slice(0, 8)}`;
-  await writeText(`${id}.csv`, csv);
-  if (!db.datasets.some((d) => d.id === id)) db.datasets.unshift({ id, name, hash, uploadedAt: now(), by, control: res.control, rejected: res.rejected, warnings: res.warnings });
-  db.activeDataset = id;
-  g.__loans!.set(id, res.accepted);
-  db.audit.unshift({ at: now(), by, action: 'dataset.ingested', target: id, detail: `${res.control.rowsAccepted} accepted, ${res.control.rowsRejected} rejected · sha256 ${hash.slice(0, 12)}…` });
-  return id;
+  if (sourceDigest && sourceDigest !== hash) throw new Error('The file differs from the supplied source SHA-256.');
+  const res = ingestCsv(csv);
+  if (!res.accepted.length || !res.control.reconciled) throw new Error('No usable reconciled loan book. Review accepted rows and exposure totals.');
+  const id = db.datasets.find(record => record.hash === hash && record.rulesVersion === 'loan-csv-2')?.id ?? 'DS-' + hash;
+  await writeText(id + '.csv', csv);
+  const record = { id, name, hash, source, sourceDigest, rulesVersion: 'loan-csv-2', uploadedAt: now(), by, control: res.control, rejected: res.rejected, warnings: res.warnings };
+  if (!(await verifyDataset(record)).matches) throw new Error('Stored extract failed read-back verification.');
+  return record;
+}
+
+function activateDataset(db: Db, record: Dataset): Db {
+  const auditEvent = { at: now(), by: record.by, action: 'dataset.ingested', target: record.id,
+    detail: [record.name, record.source, record.rulesVersion, record.control.rowsAccepted + ' accepted', record.control.rowsRejected + ' rejected', 'SHA-256 ' + record.hash, record.sourceDigest ? 'source checksum matched' : 'no upstream checksum supplied'].join(' · ') };
+  return { ...db, activeDataset: record.id, datasets: db.datasets.some(d => d.id === record.id) ? db.datasets : [record, ...db.datasets], audit: [auditEvent, ...db.audit] };
 }
 
 export async function db(): Promise<Db> {
@@ -116,9 +132,9 @@ export async function db(): Promise<Db> {
     return loaded;
   }
   const fresh: Db = { datasets: [], activeDataset: '', runs: [], audit: [] };
-  await addDataset(fresh, 'Loan book extract · 30 Sep 2026 (synthetic)', demoExtract(), 'system');
-  await save(fresh);
-  return fresh;
+  const seeded = activateDataset(fresh, await prepareDataset(fresh, 'Loan book extract · 30 Sep 2026 (synthetic)', demoExtract(), 'system', 'Built-in synthetic loan book'));
+  await save(seeded);
+  return seeded;
 }
 
 export async function sessionUser(): Promise<User | null> {
@@ -143,12 +159,19 @@ export async function activeLoans() {
   return { dataset: d.datasets.find((x) => x.id === d.activeDataset)!, loans: await loadDataset(d, d.activeDataset) };
 }
 
-export async function ingest(name: string, csv: string) {
+export async function ingest(name: string, csv: string, source: string, sourceDigest?: string) {
   const d = await db(), u = await currentUser();
   if (!u.can.includes('ingest' as never)) throw new Error('Your role cannot load data');
-  const id = await addDataset(d, name, csv, u.name);
-  await save(d);
-  return id;
+  try {
+    if (!source.trim()) throw new Error('Enter the originating system or extract reference.');
+    const record = await prepareDataset(d, name, csv, u.name, source.trim(), sourceDigest);
+    await updateCalibrationStore(current => activateDataset(current, record));
+    return record.id;
+  } catch (error) {
+    const event = { at: now(), by: u.name, action: 'dataset.blocked', target: name, detail: [source, await sha256(csv), error instanceof Error ? error.message : 'Load failed'].join(' · ') };
+    await updateCalibrationStore(current => ({ ...current, audit: [event, ...current.audit] }));
+    throw error;
+  }
 }
 
 export async function getRun(id: string, includeLoans = false) {

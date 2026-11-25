@@ -7,7 +7,7 @@ const LIVE = [
   ['Brute-force protection', '5 failed password or code attempts lock the account for 15 minutes', 'Login page message'],
   ['Authorisation', 'Role checked on the server for every action and API call: analyst runs and loads data, approver approves, auditor is read-only', 'Sign in as Yaw and try to run'],
   ['Maker-checker', 'The person who submits a run or screening cannot approve it; approvals need a note', 'Credit risk & ECL · Screening'],
-  ['Audit trail', 'Every sign-in, data load, run, screening, approval and export is logged with user and time; CSV export', 'Model governance'],
+  ['Audit trail', 'Every sign-in, data load, run, screening, approval and export is logged with user and time; CSV export', 'Data and model governance'],
   ['API protection', 'Every API except the health probe returns 401 without a valid session', 'Try an API link while signed out'],
   ['Transport security', 'HTTPS only; HSTS, X-Frame-Options DENY, nosniff, strict referrer and permissions policies on every response', 'Browser developer tools → response headers'],
   ['Secrets', 'Session key and demo password held as host environment variables; secret scanning blocks deploys that contain them', 'Deploy pipeline'],

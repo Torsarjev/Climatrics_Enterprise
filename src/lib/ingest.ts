@@ -30,9 +30,10 @@ const splitCsv = (line: string) => {
   return out;
 };
 
-export function ingestCsv(text: string): IngestResult {
+export function ingestCsv(text: string, strict = true): IngestResult {
   const lines = text.trim().split(/\r?\n/);
   const head = splitCsv(lines[0]);
+  if (strict && new Set(head).size !== head.length) throw new Error('Duplicate column headings in the CSV.');
   const missingCols = COLUMNS.filter((c) => !head.includes(c));
   if (missingCols.length) throw new Error(`Missing columns: ${missingCols.join(', ')}`);
   const idx = Object.fromEntries(head.map((h, i) => [h, i]));
@@ -45,6 +46,7 @@ export function ingestCsv(text: string): IngestResult {
     const g = (c: string) => v[idx[c]]?.trim() ?? '';
     const num = (c: string) => Number(g(c));
     const reasons: string[] = [];
+    if (strict && v.length !== head.length) reasons.push('Field count differs from header');
     const id = g('id');
     const ead = num('ead');
     eadRead += Number.isFinite(ead) ? ead : 0;
@@ -53,13 +55,23 @@ export function ingestCsv(text: string): IngestResult {
     else if (seen.has(id)) reasons.push('Duplicate facility id');
     if (!SECTORS.some((s) => s.key === g('sector'))) reasons.push(`Unknown sector "${g('sector')}"`);
     if (!REGIONS.some((r) => r.name === g('region'))) reasons.push('Missing or unknown region');
-    if (!(ead > 0)) reasons.push('Exposure (EAD) must be positive');
+    if ((strict && !Number.isFinite(ead)) || !(ead > 0)) reasons.push('Exposure (EAD) must be positive');
     const pd = num('pd'), lgd = num('lgd');
     if (!(pd > 0 && pd <= 1)) reasons.push('PD must be between 0 and 1');
-    if (!(lgd >= 0 && lgd <= 1)) reasons.push('LGD must be between 0 and 1');
-    if (!(g('collateralType') in COLLATERAL)) reasons.push('Unknown collateral type');
+    if ((strict && !g('lgd')) || !(lgd >= 0 && lgd <= 1)) reasons.push('LGD must be between 0 and 1');
+    if (!Object.hasOwn(COLLATERAL, g('collateralType'))) reasons.push('Unknown collateral type');
     const lat = num('lat'), lon = num('lon');
     if (!g('lat') || !g('lon') || !(lat > 4.5 && lat < 11.3 && lon > -3.4 && lon < 1.3)) reasons.push('Location outside Ghana or missing');
+
+    if (strict) {
+      for (const field of ['collateralValue', 'emissionsIntensity', 'maturityYears']) {
+        if (!g(field) || !Number.isFinite(num(field)) || num(field) < 0) reasons.push('Invalid ' + field);
+      }
+      if (!['1','2','3'].includes(g('stage'))) reasons.push('Invalid IFRS 9 stage');
+      if (!['true','false'].includes(g('transitionPlan'))) reasons.push('Invalid transition plan indicator');
+      if (!['gps','address','region'].includes(g('geoConfidence'))) reasons.push('Invalid location confidence');
+      if (!g('borrower')) reasons.push('Missing borrower name');
+    }
 
     const readSite = (prefix: 'facility' | 'collateral') => {
       const fields = ['Lat', 'Lon', 'Region', 'LocationRef'].map((suffix) => g(prefix + suffix));

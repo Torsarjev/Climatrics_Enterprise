@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { db, paramsHash } from '@/lib/store';
+import { db, paramsHash, verifyDataset } from '@/lib/store';
 import { activeCalibration, NGFS_RELEASE } from '@/lib/calibration';
 import { EvidenceCards } from '@/components/evidence-cards';
 import { HAZARD_DATA_VERSION, MODEL_VERSION, scenarioOf } from '@/lib/params';
@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 const CONTROLS = [
   ['Maker-checker', 'A run can only be approved by a different person from the one who created or submitted it.'],
-  ['Immutable audit trail', 'Every load, run, submission, approval and re-run is logged with who, when and what.'],
+  ['Activity log', 'Every load, run, submission, approval and re-run is logged with who, when and what.'],
   ['Reproducibility', 'Each run stores dataset hash, parameter hash, model version and random seed; re-running must give the same output hash.'],
   ['Versioned inputs', 'Datasets, hazard snapshots, scenario sets and model parameters are versioned; superseded versions are kept.'],
   ['Explainability', 'Every stressed PD, LGD and ECL can be decomposed into transition, physical and macro drivers.'],
@@ -22,6 +22,7 @@ export default async function GovernancePage() {
   const d = await db();
   const ph = await paramsHash();
   const dataset = d.datasets.find((entry) => entry.id === d.activeDataset);
+  const verification = dataset && await verifyDataset(dataset);
   const latest = d.runs[0];
   const calibration = activeCalibration(d.calibration);
   const runLink = latest ? <Link href={`/runs/${latest.id}`} className="underline">Open saved run lineage for {latest.id}</Link> : <Link href="/stress" className="underline">Open Scenario Analysis</Link>;
@@ -29,7 +30,7 @@ export default async function GovernancePage() {
   const reviewed = d.runs.filter((run) => run.status === 'approved' || run.status === 'rejected');
   return (
     <>
-      <PageHead area="Engine VI · Governance, lineage & version control" title="Governance" intro="Trace source data, model settings, review decisions and audit events." />
+      <PageHead area="Engine VI · Governance, lineage & version control" title="Data and model governance" intro="Trace source data, model settings, review decisions and audit events." />
       <EvidenceCards label="Governance metrics" items={[
         { id: 'source', label: 'Source extract', value: dataset?.id ?? 'Unavailable',
           evidence: <><p>{dataset?.name} · Imported by {dataset?.by ?? '—'}{dataset && ` · ${when(dataset.uploadedAt)}`}</p>
@@ -49,6 +50,17 @@ export default async function GovernancePage() {
         { id: 'audit', label: 'Audit events', value: d.audit.length.toLocaleString('en-GB'),
           evidence: <><p>Count of saved audit records. The log shows the actor, time, action and target.</p><a href="#audit-trail" className="underline">Open latest audit events</a> · <a href="/api/audit" className="underline">Export audit CSV</a></> },
       ]} />
+      <Card title="Loan book integrity and lineage" className="mt-6">
+        <p className="mb-3 text-sm">Analysts identify the source and provide its independently obtained SHA-256 when available. Ingestion checks the schema, quarantines invalid rows, reconciles row counts and exposure, then reads the stored file back before activating it. Each loan book read checks the stored content against the ingestion fingerprint.</p>
+        {verification && <div className="mb-4 break-all rounded-lg bg-zinc-50 p-3 text-sm"><b>Active extract · {verification.matches ? 'Stored content verified' : 'Integrity exception'}</b><p>Checked {when(verification.checkedAt)}</p><p>Recorded SHA-256 {verification.expected}</p><p>Observed SHA-256 {verification.observed ?? 'File missing'}</p></div>}
+        <Table head={['Extract and source', 'Custodian / loaded', 'Validation', 'Upstream checksum at first load', 'Downstream scenario runs']} rows={d.datasets.map(x => [
+          <span key="id" className="break-all">{x.name} · {x.id}<br/>{x.source ?? 'Source reference unavailable on historical record'}</span>,
+          x.by + ' · ' + when(x.uploadedAt), (x.rulesVersion ?? 'Legacy checks') + ' · ' + x.control.rowsAccepted + ' accepted / ' + x.control.rowsRejected + ' rejected',
+          x.sourceDigest ? 'Matched source checksum' : 'Independent checksum unavailable',
+          <span key="runs">{d.runs.filter(r => r.datasetId === x.id).map(r => <Link key={r.id} className="mr-2 underline" href={'/runs/' + r.id}>{r.id}</Link>)}</span>
+        ])}/>
+        <p className="mt-3 text-sm">For an exception, compare the recorded digest with the originating system, investigate rejected rows with the data owner, and submit a corrected version. Reviewers can trace successful and blocked validation attempts in the audit log. A local digest verifies consistency with ingestion. Independent source verification requires a trusted upstream checksum.</p>
+      </Card>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <div id="model-inventory" className="scroll-mt-6"><Card title="Model inventory">
           <Table head={['Component', 'Version', 'Owner', 'Status']} rows={[

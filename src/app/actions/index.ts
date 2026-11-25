@@ -78,9 +78,10 @@ export async function logoutAction() {
 export async function ingestAction(_: unknown, form: FormData) {
   try {
     const file = form.get('file') as File | null;
-    const csv = file && file.size ? await file.text() : demoExtract();
+    if (file?.name && !file.size) throw new Error('The selected CSV is empty.');
+    const csv = file && file.size ? new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await file.arrayBuffer()) : demoExtract();
     const name = file && file.size ? file.name : 'Loan book extract · 30 Sep 2026 (synthetic)';
-    await ingest(name, csv);
+    await ingest(name, csv, file?.size ? String(form.get('source') ?? '') : 'Built-in synthetic loan book', String(form.get('sourceDigest') ?? '').trim().toLowerCase() || undefined);
   } catch (e) {
     return { error: (e as Error).message };
   }
