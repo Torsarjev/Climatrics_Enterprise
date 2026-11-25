@@ -483,16 +483,16 @@ export async function reviewIcaap(id: string, action: string, note: string) {
     } else if (!user.can.includes('approve' as never) || record.by === user.name || record.status !== 'submitted') {
       throw new Error('An independent approver must review a submitted assessment.');
     }
-    if (action === 'approve' && !record.rows.every(({ source }) => current.runs.some((run) =>
-      run.id === source.runId && run.outputHash === source.outputHash && run.status === 'approved'))) {
-      throw new Error('Every source Engine III run must be approved before ICAAP approval.');
-    }
+    const unapproved = action === 'approve' ? [...new Set(record.rows.filter(({ source }) => !current.runs.some((run) =>
+      run.id === source.runId && run.outputHash === source.outputHash && run.status === 'approved')).map(({ source }) => source.runId))] : [];
     const status = action === 'submit' ? 'submitted' : action === 'approve' ? 'approved' : 'rejected';
     return {
       ...current, icaap: current.icaap?.map((entry) => entry.id === id ? {
         ...record, status, ...(action === 'submit' ? {} : { reviewer: user.name, reviewedAt: at, note }),
+        ...(action === 'approve' ? { unapprovedSources: unapproved } : {}),
       } : entry),
-      audit: [{ at, by: user.name, action: `icaap.${status}`, target: id, detail: note }, ...current.audit],
+      audit: [{ at, by: user.name, action: `icaap.${status}`, target: id,
+        detail: [note, unapproved.length ? `approved before source runs ${unapproved.join(', ')} were approved` : ''].filter(Boolean).join(' · ') }, ...current.audit],
     };
   });
 }

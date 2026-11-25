@@ -25,6 +25,8 @@ export function IcaapWorkspace({ runs, history, assessment, user }: {
   const worst = [...rows].sort((a, b) => a.stressed.totalRatio - b.stressed.totalRatio)[0];
   const breaches = rows.filter((row) => row.stressed.shortfall > 0);
   const largest = [...rows].sort((a, b) => b.stressed.shortfall - a.stressed.shortfall)[0];
+  const pendingSources = [...new Set(rows.filter(({ source }) => !runs.some((run) =>
+    run.id === source.runId && run.outputHash === source.outputHash && run.status === 'approved')).map(({ source }) => source.runId))];
   const reviewActions = assessment?.status === 'draft' && mayRun && assessment.by === user.name ? ['submit'] as const
     : assessment?.status === 'submitted' && mayApprove && assessment.by !== user.name ? ['approve', 'reject'] as const : [];
   return <>
@@ -41,6 +43,10 @@ export function IcaapWorkspace({ runs, history, assessment, user }: {
         <p className="mt-2 break-all text-xs text-zinc-600">Evidence SHA-256 {assessment.evidenceHash}</p>
         <a href={`/api/icaap?id=${assessment.id}`} className="mt-3 inline-block text-sm underline">Download assessment and audit evidence (JSON)</a>
         <a href={`/api/icaap?id=${assessment.id}&format=csv`} className="ml-4 inline-block text-sm underline">Download reporting results (CSV)</a>
+        {assessment.status === 'approved' && !!assessment.unapprovedSources?.length && <p className="mt-3 rounded-md bg-amber-50 p-2 text-sm text-amber-900">Approved before these source stress runs were approved: {assessment.unapprovedSources.join(', ')}.</p>}
+        {assessment.status === 'submitted' && pendingSources.length > 0 && <p className="mt-3 rounded-md bg-amber-50 p-2 text-sm text-amber-900">
+          {pendingSources.length} source stress run{pendingSources.length > 1 ? 's are' : ' is'} not yet approved: {pendingSources.map((id, i) => <span key={id}>{i ? ', ' : ''}<Link href={`/runs/${id}`} className="underline">{id}</Link></span>)}. You can still approve this assessment; the approval is recorded as made before its source runs were approved.
+        </p>}
         {reviewActions.length > 0 && <IcaapReview id={assessment.id} actions={[...reviewActions]} />}
       </Card>
 

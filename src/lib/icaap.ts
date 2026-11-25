@@ -93,7 +93,7 @@ export type IcaapProjection = ReturnType<typeof projectCapital>[number];
 export interface IcaapAssessment {
   id: string; version: string; createdAt: string; by: string; datasetId: string; datasetHash: string; evidenceHash: string;
   opening: IcaapOpening; rows: IcaapProjection[];
-  status: 'draft' | 'submitted' | 'approved' | 'rejected'; reviewer?: string; reviewedAt?: string; note?: string;
+  status: 'draft' | 'submitted' | 'approved' | 'rejected'; reviewer?: string; reviewedAt?: string; note?: string; unapprovedSources?: string[];
 }
 
 export interface IcaapBatchBasis {
