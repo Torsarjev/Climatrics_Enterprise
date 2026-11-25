@@ -1,6 +1,7 @@
 import { activeLoans, currentUser, db } from '@/lib/store';
 import { Badge, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
 import { IngestForm } from '@/components/ingest-form';
+import { IngestApi } from '@/components/ingest-api';
 import { ghs, when } from '@/lib/fmt';
 import { COLUMNS } from '@/lib/portfolio';
 import { VALIDATION_RULES } from '@/lib/ingest';
@@ -24,10 +25,15 @@ export default async function DataPage() {
   return (
     <>
       <PageHead area="Data ingestion & governance" title="Data" intro="Every extract is validated, reconciled to control totals, hashed and versioned before any model can use it. Rejected rows never reach the engines." />
-      <Card title="Load a loan book extract">
-        {user.can.includes('ingest' as never) ? <IngestForm canIngest /> : <p className="text-sm text-zinc-600">{user.name} ({user.role}) can review the data and its validation results, but loading data is restricted to analysts.</p>}
-        <p className="mt-2 text-xs text-zinc-500">Expected columns: <span className="font-mono">{COLUMNS.join(', ')}</span></p>
-      </Card>
+      <div className="grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
+        <Card title="Load a loan book extract" note="file upload">
+          {user.can.includes('ingest' as never) ? <IngestForm canIngest /> : <p className="text-sm text-zinc-600">{user.name} ({user.role}) can review the data and its validation results, but loading data is restricted to analysts.</p>}
+          <p className="mt-2 text-xs text-zinc-500">Expected columns: <span className="font-mono break-all">{COLUMNS.join(', ')}</span></p>
+        </Card>
+        <Card title="API integration" note="system to system">
+          <IngestApi canIngest={user.can.includes('ingest' as never)} />
+        </Card>
+      </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat href="/methodology#exposure" label="Rows read" value={String(c.rowsRead)} sub={ghs(c.eadRead)} />
