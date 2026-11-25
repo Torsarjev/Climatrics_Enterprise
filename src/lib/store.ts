@@ -11,7 +11,7 @@ import { CRITERIA, FRAMEWORK_VERSIONS, QUESTIONS } from './esg/rules';
 import * as P from './params';
 import { sha256 } from './math';
 import { CALIBRATION_VERSION, REGRESSION_VERSION, activeCalibration, CalibrationProfile, calibrationEvidence, ghanaShocks, readRegressionWindow, wdiRegression } from './calibration';
-import { ICAAP_VERSION, projectCapital, readFinanceCsv, type FinancePeriod, type IcaapAssessment, type IcaapOpening, type IcaapSource } from './icaap';
+import { ICAAP_VERSION, icaapBatchMismatch, projectCapital, readFinanceCsv, type FinancePeriod, type IcaapAssessment, type IcaapOpening, type IcaapSource } from './icaap';
 import { scenarioReporting } from './scenario-report';
 import { readBenchmark } from './regression-models';
 import { readMatchedEvidence } from './calibration-regression';
@@ -352,8 +352,8 @@ export async function prepareIcaapBatches(approach: RunInput['approach']) {
   if (!dataset?.control.reconciled) throw new Error('Load a reconciled loan book first.');
   const calibration = activeCalibration(d.calibration);
   const fingerprint = await runParamsHash({ scenario: 'nz2050', horizon: 2027, approach, eclModel: STAGED_ECL_MODEL, calibration });
-  const selected: Record<string, { id: string; label: string }> = {};
-  for (const { key, years, name } of GCB_PATHWAYS) {
+  const selected: Record<string, string> = {};
+  for (const { key, years } of GCB_PATHWAYS) {
     const candidates = (await db()).runs.filter((run) => run.input.scenario === key && run.batchId);
     const matching = [...new Set(candidates.map((run) => run.batchId!))].flatMap((id) => {
       const rows = candidates.filter((run) => run.batchId === id);
@@ -364,7 +364,7 @@ export async function prepareIcaapBatches(approach: RunInput['approach']) {
     });
     const existing = matching.find((candidate) => candidate.approved) ?? matching[0];
     const id = existing?.id ?? await createScenarioBatch({ scenario: key, approach }, years, calibration.id, dataset.id);
-    selected[key] = { id, label: `${name} · ${dataset.id} · ${approach} · ${existing?.approved ? 'approved' : 'review pending'}` };
+    selected[key] = id;
   }
   const current = await db();
   if (current.activeDataset !== dataset.id || activeCalibration(current.calibration).id !== calibration.id) {
@@ -376,18 +376,27 @@ export async function prepareIcaapBatches(approach: RunInput['approach']) {
 export async function createIcaap(form: FormData) {
   const user = await currentUser();
   if (!user.can.includes('run' as never)) throw new Error('Only an analyst can run ICAAP projections.');
+  const approach = form.get('approach');
+  if (form.get('batchMode') === 'automatic' && approach !== 'bottom-up' && approach !== 'top-down') {
+    throw new Error('Choose a credit approach.');
+  }
+  const prepared = form.get('batchMode') === 'automatic' && (approach === 'bottom-up' || approach === 'top-down')
+    ? await prepareIcaapBatches(approach) : undefined;
   const d = await db();
-  const runs = GCB_PATHWAYS.flatMap(({ key, years }) => {
-    const batch = String(form.get(key) ?? '');
+  const runs = GCB_PATHWAYS.flatMap(({ key, years, name }) => {
+    const batch = prepared?.[key] ?? String(form.get(key) ?? '');
     const selected = d.runs.filter((run) => run.batchId === batch && run.input.scenario === key && run.reporting);
     if (selected.length !== years.length || years.some((year) => !selected.some((run) => run.input.horizon === year))) {
-      throw new Error('Select a complete Engine III batch for each of the three GCB pathways.');
+      throw new Error(`Select a complete Engine III batch for ${name}, or switch to automatic batch selection.`);
     }
     return selected;
   });
   const first = runs[0];
-  if (runs.some((run) => run.datasetHash !== first.datasetHash || run.paramsHash !== first.paramsHash || run.input.approach !== first.input.approach || run.status === 'rejected')) {
-    throw new Error('Use non-rejected batches with the same loan book, parameter fingerprint and credit approach.');
+  for (const run of runs) {
+    const name = P.scenarioOf(run.input.scenario).name;
+    if (run.status === 'rejected') throw new Error(`${name} source run ${run.id} was rejected. Select a different batch or use automatic selection.`);
+    const mismatches = icaapBatchMismatch({ ...first, approach: first.input.approach }, { ...run, approach: run.input.approach });
+    if (mismatches.length) throw new Error(`${name} (${run.id}) differs from ${P.scenarioOf(first.input.scenario).name} (${first.id}) in ${mismatches.join(', ')}. Select matching batches or use automatic selection.`);
   }
   const dataset = d.datasets.find(({ id }) => id === first.datasetId);
   if (!dataset || dataset.hash !== first.datasetHash || !dataset.control.reconciled) throw new Error('The source loan book failed reconciliation.');

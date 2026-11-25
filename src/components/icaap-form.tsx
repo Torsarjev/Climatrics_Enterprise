@@ -1,7 +1,8 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { prepareIcaapAction, projectIcaapAction, reviewIcaapAction } from '@/app/actions/icaap';
+import { projectIcaapAction, reviewIcaapAction } from '@/app/actions/icaap';
+import { icaapBatchMismatch, type IcaapBatchBasis } from '@/lib/icaap';
 import { btnClass } from './ui';
 
 const field = 'mt-1 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm';
@@ -13,43 +14,52 @@ const numbers = [
   ['totalMin', 'Total capital requirement incl. buffer (%)', 13],
 ] as const;
 
-type SourceChoice = { key: string; name: string; years: number[]; batches: { id: string; label: string }[] };
+type SourceChoice = { key: string; name: string; years: number[]; batches: (IcaapBatchBasis & { id: string; label: string })[] };
 export function IcaapForm({ choices }: { choices: SourceChoice[] }) {
   const [mode, setMode] = useState('demo');
+  const [batchMode, setBatchMode] = useState('automatic');
+  const [selected, setSelected] = useState<Record<string, string>>({});
   const [state, action, pending] = useActionState(projectIcaapAction, null);
-  const [prepared, prepare, preparing] = useActionState(prepareIcaapAction, null);
-  const ready = prepared?.batches;
-  const missing = choices.filter((item) => !item.batches.length && !ready?.[item.key]);
-  return <>
-    <form action={prepare} className="mb-5 rounded-lg border border-lime-300 bg-lime-50 p-4">
-      <p className="text-sm text-zinc-700">Prepare all three pathways using the active loan book and calibration. Existing compatible batches are reused and missing batches are created.</p>
-      <div className="mt-3 flex flex-wrap items-end gap-3">
-        <label className="text-sm font-medium">Credit approach
+  const sources = choices.map((choice) => ({ name: choice.name, batch: choice.batches.find(({ id }) => id === selected[choice.key]) }));
+  const anchor = sources.find(({ batch }) => batch);
+  const conflicts = sources.flatMap(({ name, batch }) => {
+    const differences = anchor?.batch && batch ? icaapBatchMismatch(anchor.batch, batch) : [];
+    return differences.length ? [`${name} differs from ${anchor?.name} in ${differences.join(', ')}.`] : [];
+  });
+  const missing = sources.filter(({ batch }) => !batch).map(({ name }) => name);
+  return <form action={action} className="space-y-4">
+    <div className="space-y-3 rounded-lg border border-lime-300 bg-lime-50 p-4">
+      <label className="block text-sm font-medium">Scenario batches
+        <select name="batchMode" className={field} value={batchMode} onChange={(event) => setBatchMode(event.target.value)}>
+          <option value="automatic">Automatically use compatible batches</option>
+          <option value="manual">Choose saved batches manually</option>
+        </select>
+      </label>
+      {batchMode === 'automatic' ? <>
+        <p className="text-sm text-zinc-700">Running ICAAP reuses compatible Engine III batches and creates missing ones using the active loan book, model settings and calibration.</p>
+        <label className="block text-sm font-medium">Credit approach
           <select name="approach" className={field} defaultValue="bottom-up">
             <option value="bottom-up">Bottom-up · borrower financials</option>
             <option value="top-down">Top-down · sector stress</option>
           </select>
         </label>
-        <button disabled={preparing || pending} className={btnClass}>{preparing ? 'Preparing scenario batches…' : 'Prepare and select scenario batches'}</button>
-      </div>
-      {ready && !preparing && <p role="status" className="mt-3 text-sm">Three compatible batches are selected. Review the finance inputs and run the capital assessment.</p>}
-      {prepared?.error && <p role="alert" className="mt-3 text-sm text-red-700">{prepared.error}</p>}
-    </form>
-    <form action={action} className="space-y-4">
-    <div className="grid gap-3 md:grid-cols-3">
-      {choices.map(({ key, name, years, batches }) => {
-        const selected = ready?.[key];
-        const options = selected && !batches.some(({ id }) => id === selected.id) ? [selected, ...batches] : batches;
-        return <label key={`${key}:${prepared?.selectionKey ?? ''}`} className="text-sm font-medium">
-        {name} · {years.join(', ')}
-        <select name={key} className={field} required defaultValue={prepared?.selectionKey ?? ''}>
-          <option value="" disabled>{options.length ? 'Select Engine III batch' : 'No complete batch'}</option>
-          {options.map((batch) => <option key={batch.id} value={batch.id}>{batch.label}</option>)}
-        </select>
-      </label>;
-      })}
+      </> : <>
+        <div className="grid gap-3 md:grid-cols-3">
+          {choices.map(({ key, name, years, batches }) => <label key={key} className="text-sm font-medium">
+            {name} · {years.join(', ')}
+            <select name={key} className={field} required value={selected[key] ?? ''} onChange={(event) => {
+              const value = event.target.value;
+              setSelected((current) => ({ ...current, [key]: value }));
+            }}>
+              <option value="">{batches.length ? 'Select Engine III batch' : 'No complete batch'}</option>
+              {batches.map((batch) => <option key={batch.id} value={batch.id}>{batch.label}</option>)}
+            </select>
+          </label>)}
+        </div>
+        {conflicts.length > 0 && <p role="alert" className="text-sm text-red-700">{conflicts.join(' ')} Select matching batches or switch to automatic selection.</p>}
+        {missing.length > 0 && <p className="text-sm text-amber-800">Select a complete batch for {missing.join(', ')} or switch to automatic selection.</p>}
+      </>}
     </div>
-    {missing.length > 0 && <p className="text-sm text-amber-800">Missing complete batches for {missing.map(({ name }) => name).join(', ')}. Use the preparation button above to continue.</p>}
     <label className="block text-sm font-medium">Finance inputs<select className={field} name="financeMode" value={mode} onChange={(event) => setMode(event.target.value)}>
       <option value="demo">Illustrative finance assumptions</option><option value="upload">GCB finance file</option>
     </select></label>
@@ -66,12 +76,11 @@ export function IcaapForm({ choices }: { choices: SourceChoice[] }) {
       <label className="text-sm font-medium">Scenario-period finance CSV (GHS)<input className={field} name="finance" type="file" accept=".csv,text/csv" required /></label>
     </div>}
     <div className="flex flex-wrap items-center gap-4">
-      <button disabled={pending || preparing || missing.length > 0} className={btnClass}>{pending ? 'Reconciling ECL and projecting capital…' : 'Run all three capital scenarios'}</button>
+      <button disabled={pending || (batchMode === 'manual' && (conflicts.length > 0 || missing.length > 0))} className={btnClass}>{pending ? 'Preparing scenarios and projecting capital…' : 'Run all three capital scenarios'}</button>
       <a href="/api/icaap?template=1" className="text-sm underline">Download finance CSV template</a>
     </div>
     {state?.error && <p role="alert" className="text-sm text-red-700">{state.error}</p>}
-  </form>
-  </>;
+  </form>;
 }
 
 export function IcaapReview({ id, actions }: { id: string; actions: ('submit' | 'approve' | 'reject')[] }) {

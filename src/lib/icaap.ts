@@ -95,3 +95,17 @@ export interface IcaapAssessment {
   opening: IcaapOpening; rows: IcaapProjection[];
   status: 'draft' | 'submitted' | 'approved' | 'rejected'; reviewer?: string; reviewedAt?: string; note?: string;
 }
+
+export interface IcaapBatchBasis {
+  datasetHash: string;
+  paramsHash: string;
+  approach: string;
+}
+
+export function icaapBatchMismatch(a: IcaapBatchBasis, b: IcaapBatchBasis) {
+  return [
+    ...(a.datasetHash !== b.datasetHash ? ['loan book'] : []),
+    ...(a.paramsHash !== b.paramsHash ? ['model settings or calibration'] : []),
+    ...(a.approach !== b.approach ? ['credit approach'] : []),
+  ];
+}
