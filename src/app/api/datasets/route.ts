@@ -4,8 +4,8 @@ import { db, ingest, sessionUser } from '@/lib/store';
 export const dynamic = 'force-dynamic';
 
 const MAX_BYTES = 5_000_000;
-const summary = ({ id, name, hash, uploadedAt, by, control, rejected, warnings }: Awaited<ReturnType<typeof db>>['datasets'][number]) =>
-  ({ id, name, sha256: hash, uploadedAt, by, control, rejected, warnings });
+const summary = ({ id, name, hash, source, sourceDigest, uploadedAt, by, control, rejected, warnings }: Awaited<ReturnType<typeof db>>['datasets'][number]) =>
+  ({ id, name, sha256: hash, source, sourceChecksumMatched: !!sourceDigest, uploadedAt, by, control, rejected, warnings });
 
 export async function GET() {
   if (!(await sessionUser())) return Response.json({ error: 'Unauthorised' }, { status: 401 });
@@ -23,7 +23,9 @@ export async function POST(req: Request) {
   if (csv.length > MAX_BYTES) return Response.json({ error: 'Extract larger than 5 MB' }, { status: 413 });
   const source = (req.headers.get('x-source-system') ?? 'API client').replace(/[^\w .\-/·()]/g, '').slice(0, 80) || 'API client';
   try {
-    const id = await ingest(`${source} · API load`, csv);
+    const digest = req.headers.get('x-source-sha256')?.trim().toLowerCase() || undefined;
+    if (digest && !/^[a-f0-9]{64}$/.test(digest)) return Response.json({ error: 'X-Source-SHA256 must be 64 hex characters' }, { status: 400 });
+    const id = await ingest(`${source} · API load`, csv, `${source} (API)`, digest);
     revalidatePath('/', 'layout');
     const d = await db();
     return Response.json(summary(d.datasets.find((x) => x.id === id)!), { status: 201 });
