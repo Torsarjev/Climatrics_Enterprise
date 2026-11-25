@@ -59,9 +59,10 @@ export function IlaapReview({ id, checker, illustrative }: { id: string; checker
   return <form action={action} className="mt-3 space-y-2">
     <input type="hidden" name="id" value={id} />
     {checker ? <>
-      <label className="block text-sm">Decision<select name="decision" className={field} defaultValue={illustrative ? 'reject' : 'approve'}>
-        {!illustrative && <option value="approve">Approve</option>}<option value="reject">Reject</option>
+      <label className="block text-sm">Decision<select name="decision" className={field} defaultValue="approve">
+        <option value="approve">Approve</option><option value="reject">Reject</option>
       </select></label>
+      {illustrative && <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-900">This assessment uses illustrative Treasury data. You can approve it; the approval is recorded as made on illustrative data.</p>}
       <label className="block text-sm">Treasury / ALCO sign-off reference<input name="reference" maxLength={200} className={field} /></label>
     </> : <input type="hidden" name="decision" value="submit" />}
     <label className="block text-sm">Review note<input name="note" maxLength={1000} className={field} /></label>

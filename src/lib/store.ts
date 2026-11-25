@@ -559,13 +559,13 @@ export async function reviewIlaap(id: string, decision: string, note: string, ap
     } else if (!user.can.includes('approve' as never) || record.status !== 'submitted' || record.by === user.name) {
       throw new Error('An independent checker must review the submitted assessment.');
     }
-    if (decision === 'approve' && (!approvalReference || record.illustrative)) {
-      throw new Error('Approval requires reconciled uploaded Treasury data and a Treasury/ALCO sign-off reference.');
+    if (decision === 'approve' && !approvalReference) {
+      throw new Error('Approval requires a Treasury/ALCO sign-off reference.');
     }
     const status = decision === 'submit' ? 'submitted' : decision === 'approve' ? 'approved' : 'rejected';
     return { ...current, ilaap: current.ilaap?.map((entry) => entry.id === id ? {
       ...entry, status, ...(decision === 'submit' ? {} : { reviewer: user.name, reviewedAt: at, note, approvalReference }),
-    } : entry), audit: [{ at, by: user.name, action: `ilaap.${status}`, target: id, detail: approvalReference || note }, ...current.audit] };
+    } : entry), audit: [{ at, by: user.name, action: `ilaap.${status}`, target: id, detail: [approvalReference || note, decision === 'approve' && record.illustrative ? 'approved on illustrative Treasury data' : ''].filter(Boolean).join(' · ') }, ...current.audit] };
   });
 }
 
