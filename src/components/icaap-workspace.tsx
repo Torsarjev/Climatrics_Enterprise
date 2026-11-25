@@ -51,11 +51,11 @@ export function IcaapWorkspace({ runs, history, assessment, user }: {
       </Card>
 
       <EvidenceCards key={assessment.id} label="ICAAP assessment metrics" items={[
-        { id: 'car', label: 'Lowest stressed total capital ratio', value: pct(worst.stressed.totalRatio, 2), sub: `${worst.pathway} · ${worst.source.year}`,
+        { id: 'car', tone: worst.stressed.shortfall > 0 ? 'red' : 'green', label: 'Lowest stressed total capital ratio', value: pct(worst.stressed.totalRatio, 2), sub: `${worst.pathway} · ${worst.source.year}`,
           evidence: <p>Eligible capital {ghs(worst.stressed.total)} ÷ {ghs(worst.stressed.rwa)} RWA. Configured total requirement {pct(assessment.opening.totalMin, 2)}.</p> },
-        { id: 'breaches', label: 'Periods below requirement', value: String(breaches.length), sub: `of ${rows.length} scenario periods`,
+        { id: 'breaches', tone: breaches.length ? 'red' : 'green', label: 'Periods below requirement', value: String(breaches.length), sub: `of ${rows.length} scenario periods`,
           evidence: breaches.length ? <Table head={['Pathway', 'Year', 'CET1 headroom', 'Tier 1 headroom', 'Total headroom']} rows={breaches.map((row) => [row.pathway, row.source.year, ghs(row.stressed.headroom.cet1), ghs(row.stressed.headroom.tier1), ghs(row.stressed.headroom.total)])} /> : <p>All tested periods meet the configured CET1, Tier 1 and total capital requirements.</p> },
-        { id: 'shortfall', label: 'Largest capital shortfall', value: ghs(largest.stressed.shortfall),
+        { id: 'shortfall', tone: largest.stressed.shortfall > 0 ? 'red' : 'green', label: 'Largest capital shortfall', value: ghs(largest.stressed.shortfall),
           evidence: <p>Largest shortfall across all three requirements and scenario periods. {largest.stressed.shortfall > 0 ? `${largest.pathway} · ${largest.source.year}. Test an eligible CET1 injection, dividend restraint, or credit RWA reduction in the finance file.` : 'No period has a capital shortfall.'}</p> },
       ]} />
 

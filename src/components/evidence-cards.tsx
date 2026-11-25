@@ -12,7 +12,6 @@ export interface EvidenceItem {
 }
 
 const TONE = {
-  none: 'border-zinc-200 bg-white hover:border-lime-600 hover:bg-lime-50 aria-expanded:border-lime-600 aria-expanded:bg-lime-50',
   green: 'border-emerald-400 bg-emerald-100 hover:border-emerald-700 hover:bg-emerald-200 aria-expanded:border-emerald-700 aria-expanded:bg-emerald-200',
   red: 'border-red-400 bg-red-100 hover:border-red-600 hover:bg-red-200 aria-expanded:border-red-600 aria-expanded:bg-red-200',
 };
@@ -30,7 +29,7 @@ export function EvidenceCards({ items, label, columns = 4 }: { items: EvidenceIt
     <div className={`grid gap-3 sm:grid-cols-2 ${columns === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
       {items.map(({ id, label, value, sub, tone }) => <button key={id} type="button" aria-expanded={id === selected} aria-controls={panel}
         onClick={() => setSelected(id === selected ? undefined : id)}
-        className={`min-w-0 rounded-lg border p-4 text-left focus-visible:outline-2 focus-visible:outline-lime-700 ${TONE[tone ?? 'none']}`}>
+        className={`min-w-0 rounded-lg border p-4 text-left focus-visible:outline-2 focus-visible:outline-lime-700 ${TONE[tone ?? 'green']}`}>
         <span className="block text-sm text-zinc-700">{label}</span>
         <span className="mt-1 block break-words text-xl font-semibold tabular-nums">{value}</span>
         {sub && <span className="mt-1 block break-words text-sm text-zinc-600">{sub}</span>}
