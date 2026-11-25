@@ -10,7 +10,7 @@ export interface EvidenceItem {
   evidence: ReactNode;
 }
 
-export function EvidenceCards({ items, label }: { items: EvidenceItem[]; label: string }) {
+export function EvidenceCards({ items, label, columns = 4 }: { items: EvidenceItem[]; label: string; columns?: 3 | 4 }) {
   const [selected, setSelected] = useState<string>();
   const heading = useRef<HTMLHeadingElement>(null);
   const panel = useId();
@@ -20,7 +20,7 @@ export function EvidenceCards({ items, label }: { items: EvidenceItem[]; label: 
   }, [selected]);
 
   return <section aria-label={label}>
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className={`grid gap-3 sm:grid-cols-2 ${columns === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
       {items.map(({ id, label, value, sub }) => <button key={id} type="button" aria-expanded={id === selected} aria-controls={panel}
         onClick={() => setSelected(id === selected ? undefined : id)}
         className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4 text-left hover:border-lime-600 hover:bg-lime-50 focus-visible:outline-2 focus-visible:outline-lime-700 aria-expanded:border-lime-600 aria-expanded:bg-lime-50">

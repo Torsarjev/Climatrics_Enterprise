@@ -10,6 +10,43 @@ import type { User } from '@/lib/store';
 const ratio = (value: number | null) => value === null ? 'No net outflows' : pct(value, 2);
 const survival = (day: number | null) => day === null ? 'Through day 365' : `Deficit by day ${day}`;
 
+type LiquidityResult = IlaapAssessment['rows'][number];
+
+function DepositEvidence({ result }: { result: LiquidityResult }) {
+  const slowdown = Math.max(0, -result.macro.gdp);
+  const inflation = Math.max(0, result.macro.inflation);
+  return <Table head={['Segment / bucket', 'Starting deposits', 'Baseline runoff', 'GDP / CPI sensitivity', 'GDP / CPI uplift before cap (pp)', 'Stressed runoff', 'Additional withdrawals']}
+    rows={result.deposits.map((row) => [
+      `${row.segment} · day ${row.day}`, ghs(row.balance), `${row.runoffPct.toFixed(2)}% · ${ghs(row.baseline)}`,
+      `${row.gdpSensitivity} / ${row.inflationSensitivity}`,
+      `${(slowdown * row.gdpSensitivity).toFixed(2)} / ${(inflation * row.inflationSensitivity).toFixed(2)}`,
+      `${row.balance ? pct(row.stressed / row.balance, 2) : '—'} · ${ghs(row.stressed)}`,
+      ghs(row.stressed - row.baseline),
+    ])} />;
+}
+
+function MethodologyBrief() {
+  return <Card title="Methodology brief" className="mb-6">
+    <div className="grid gap-4 text-sm text-zinc-700 lg:grid-cols-3">
+      <section className="rounded-lg bg-lime-50 p-4">
+        <h3 className="font-semibold text-zinc-900">1. Reprice liquid assets</h3>
+        <p className="mt-2">The Ghana-calibrated NGFS long-rate shock is mapped to each bond’s tenor using its multiplier and basis spread. Convert the mapped yield change to a decimal, then estimate the bond price change as <b>−modified duration × Δyield + ½ × convexity × Δyield²</b>.</p>
+        <p className="mt-2">Stressed HQLA is opening cash plus the repriced value of eligible bonds after removing encumbered portions and applying liquidity haircuts.</p>
+      </section>
+      <section className="rounded-lg bg-lime-50 p-4">
+        <h3 className="font-semibold text-zinc-900">2. Stress retail and corporate withdrawals</h3>
+        <p className="mt-2">Climate-related GDP weakness can tighten household budgets and corporate working capital. Higher inflation can increase household living costs and business operating expenses. The model translates these pressures into higher withdrawals using each segment’s own sensitivities.</p>
+        <p className="mt-2"><b>Stressed runoff %</b> = baseline runoff % + GDP downside × GDP sensitivity + positive inflation shock × inflation sensitivity, capped at 100%. Apply the resulting rate to the segment balance in its assigned bucket.</p>
+      </section>
+      <section className="rounded-lg bg-lime-50 p-4">
+        <h3 className="font-semibold text-zinc-900">3. Calculate the 30-day LCR proxy</h3>
+        <p className="mt-2">Divide stressed opening HQLA by net 30-day outflows. Deposit runoff, weaker funding rollover, rollover spread costs and higher operating outflows can increase the denominator. Contractual inflows can weaken and are capped at 75% of gross outflows.</p>
+        <p className="mt-2">Withdrawal estimates are conditional on the supplied behavioural assumptions. The proxy is shown before contingency actions.</p>
+      </section>
+    </div>
+  </Card>;
+}
+
 export function IlaapWorkspace({ assessment, history, view, user }: { assessment?: IlaapAssessment; history: IlaapAssessment[]; view?: string; user: User }) {
   const mayRun = user.can.includes('run' as never);
   const mayApprove = user.can.includes('approve' as never);
@@ -19,6 +56,34 @@ export function IlaapWorkspace({ assessment, history, view, user }: { assessment
   const a = assessment;
   return <>
     <PageHead area="Climate ILAAP · Treasury and ALM" title="Climate liquidity adequacy" intro="Revalue liquid assets and stress funding and cash flows under NGFS macro pathways. Compare the baseline, climate stress and contingency actions." />
+    <MethodologyBrief />
+    {a && <div className="mb-6">
+      <Card title="LCR scenario summary">
+        <p className="mb-3 text-sm text-zinc-600">Each card shows the lowest stressed 30-day LCR proxy across the reporting years in that scenario, before contingency actions.</p>
+        <EvidenceCards key={a.id} label="Scenario LCR summary" columns={3} items={GCB_PATHWAYS.map(({ key, label, name }) => {
+          const rows = a.rows.filter((row) => row.macro.scenario === key);
+          const lowest = rows.reduce<LiquidityResult | undefined>((worst, row) =>
+            row.stressed.lcr !== null && (!worst || row.stressed.lcr < worst.stressed.lcr!) ? row : worst, undefined);
+          const evidence = lowest ?? rows[0];
+          return {
+            id: key, label: key === 'current' ? 'Current Policies' : label,
+            value: lowest ? ratio(lowest.stressed.lcr) : rows.length ? 'No net outflows' : 'Not run',
+            sub: lowest ? `${lowest.macro.year} · Baseline ${ratio(lowest.baseline.lcr)} · ${lowest.stressed.lcr! < a.inputs.minimumLcrPct / 100 ? 'Below' : 'Meets'} model minimum ${pct(a.inputs.minimumLcrPct / 100)}` : undefined,
+            evidence: evidence ? <>
+              <p>{name} · {a.release} · Ghana calibration {a.calibration} · Yield mapping {a.inputs.mapping}. {a.illustrative ? 'Treasury and behavioural inputs are illustrative.' : `Treasury reference ${a.inputs.reference}.`}</p>
+              <Table head={['Year', 'Baseline LCR', 'Stressed LCR', 'HQLA baseline → stressed', 'Stressed 30-day net outflows']} rows={rows.map((row) => [
+                <Link key={keyOf(row)} href={`/liquidity?assessment=${a.id}&view=${keyOf(row)}#liquidity-detail`} className="underline">{row.macro.year}</Link>,
+                ratio(row.baseline.lcr), ratio(row.stressed.lcr), `${ghs(row.baseline.opening)} → ${ghs(row.stressed.opening)}`, ghs(row.stressed.net30),
+              ])} />
+              <h3 className="font-semibold">{evidence.macro.year} assumptions</h3>
+              <p>Ghana GDP {evidence.macro.gdp.toFixed(2)}% · inflation {evidence.macro.inflation.toFixed(2)} pp · long rate {evidence.macro.rate.toFixed(2)} pp. Stressed gross outflows {ghs(evidence.stressed.out30)} less capped inflows {ghs(evidence.stressed.out30 - evidence.stressed.net30)}.</p>
+              <DepositEvidence result={evidence} />
+              <Link href={`/liquidity?assessment=${a.id}&view=${keyOf(evidence)}#liquidity-detail`} className="inline-block underline">Open bond repricing and cash-flow evidence for {evidence.macro.year}</Link>
+            </> : <p>This pathway was excluded from the saved assessment. Select it when running a liquidity assessment to see its LCR.</p>,
+          };
+        })} />
+      </Card>
+    </div>}
     {a && result && <div className="mb-6 space-y-4">
       <Card title="Assessment evidence" note={<Badge tone={a.status === 'approved' ? 'green' : a.status === 'rejected' ? 'red' : 'amber'}>{a.status}</Badge>}>
         <p className="break-words text-sm">{a.id} · {a.version} · {a.inputs.entity} · {a.inputs.currency} · Treasury date {a.inputs.asOf}</p>
@@ -65,9 +130,7 @@ export function IlaapWorkspace({ assessment, history, view, user }: { assessment
             <Table head={['Bucket', 'Contractual inflows', 'Contractual outflows', 'Runoff', 'Unrolled funding', 'Rollover spread costs', 'Redemptions']} rows={result.stressed.rows.map((row) => [
               row.day, ghs(row.contractualIn), ghs(row.contractualOut), ghs(row.runoff), ghs(row.fundingOut), ghs(row.rolloverSpreadCost), ghs(row.redemption),
             ])} />
-            <Table head={['Deposit segment', 'Balance', 'GDP / inflation sensitivities', 'Baseline runoff', 'Stressed runoff']} rows={result.deposits.map((row) => [
-              row.segment, ghs(row.balance), `${row.gdpSensitivity} / ${row.inflationSensitivity}`, ghs(row.baseline), ghs(row.stressed),
-            ])} />
+            <DepositEvidence result={result} />
           </details>
         </Card>
         <Card title="HQLA bond repricing and macro evidence">
