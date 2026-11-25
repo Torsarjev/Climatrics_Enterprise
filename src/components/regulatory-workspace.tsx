@@ -1,3 +1,4 @@
+import { MOCK_DISCLOSURES } from '@/lib/mock-disclosures';
 import Link from 'next/link';
 import { Badge, Card, PageHead, Table } from './ui';
 import { CreateRegulatoryForm, DisclosureEditor, RegulatoryReview } from './regulatory-forms';
@@ -27,6 +28,7 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
   const gaps = total - complete - excluded;
   const selected = register.find((item) => item.id === requirement);
   const selectedRow = pack?.rows.find((row) => row.requirement.id === requirement);
+  const example = selected ? MOCK_DISCLOSURES[selected.id] : undefined;
   const sourceFramework = selected ? (pack?.standards ?? FRAMEWORKS)[selected.framework] : undefined;
   const route = (overrides: Record<string, string> = {}) => `/reports?${new URLSearchParams({
     ...(pack ? { pack: pack.id } : {}), ...(standard ? { standard } : {}), ...(filter ? { filter } : {}), ...overrides,
@@ -60,6 +62,7 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
     </Card>}
 
     <Card title="Requirement and evidence register" className="mb-6" note={pack?.version ?? REGISTER_VERSION}>
+      <p className="mb-3 text-sm text-zinc-600">Open a requirement to see its mock disclosure and the evidence to collect.</p>
       <nav aria-label="Disclosure register filters" className="mb-4 flex flex-wrap gap-2 text-sm">
         {[['', 'All frameworks'], ...Object.entries(FRAMEWORKS).map(([key, value]) => [key, value.title])].map(([key, label]) => (
           <Link key={key} href={route({ standard: key })} aria-current={(standard ?? '') === key ? 'page' : undefined}
@@ -92,6 +95,11 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
       <Card title={selected.title} note={`${sourceFramework.title} · ${selected.paragraph}`}>
         <p className="text-sm">{selected.pillar} · {sourceFramework.version} · <a href={sourceFramework.uri} className="underline">Source standard or directive</a></p>
         <p className="mt-2 text-sm">Mapped evidence · {selected.evidence.map((kind) => EVIDENCE_KIND[kind]).join(' · ')}</p>
+        {example && <section aria-label="Mock disclosure" className="mt-4 rounded-lg border border-lime-300 bg-lime-50 p-4 text-sm">
+          <h3 className="font-semibold">Mock disclosure · {selectedRow?.owner ?? selected.owner}</h3>
+          <p className="mt-2">{example}</p>
+          <p className="mt-2 text-zinc-700">Replace every double-bracketed placeholder with verified information and link the supporting evidence before sign-off.</p>
+        </section>}
         {selectedRow && <div className="mt-3 space-y-3 text-sm">
           <p>Applicability {selectedRow.applicability} · Owner {selectedRow.owner}</p>
           {selectedRow.rationale && <p className="whitespace-pre-wrap">{selectedRow.rationale}</p>}
@@ -109,7 +117,7 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
             </div>
           </details>)}
         </div>}
-        {mayEdit && pack && selectedRow && <DisclosureEditor key={`${pack.id}:${selected.id}`} pack={pack.id} row={selectedRow} sources={sources} />}
+        {mayEdit && pack && selectedRow && <DisclosureEditor key={`${pack.id}:${selected.id}`} pack={pack.id} row={selectedRow} sources={sources} example={example} />}
       </Card>
     </div>}
 

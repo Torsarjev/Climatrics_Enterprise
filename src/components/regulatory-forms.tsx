@@ -25,9 +25,10 @@ export function CreateRegulatoryForm() {
   </form>;
 }
 
-export function DisclosureEditor({ pack, row, sources }: { pack: string; row: DisclosureRow; sources: SourceEvidence[] }) {
+export function DisclosureEditor({ pack, row, sources, example }: { pack: string; row: DisclosureRow; sources: SourceEvidence[]; example?: string }) {
   const [state, action, pending] = useActionState(saveDisclosureAction, null);
   const [method, setMethod] = useState('none');
+  const [narrative, setNarrative] = useState(row.narrative);
   const [applicability, setApplicability] = useState(row.applicability);
   const types = row.requirement.evidence;
   const matches = sources.filter((item) => types.includes(item.kind));
@@ -40,7 +41,13 @@ export function DisclosureEditor({ pack, row, sources }: { pack: string; row: Di
       </select></label>
     </div>
     <label className="block text-sm font-medium">Applicability rationale<input name="rationale" required={applicability === 'not-applicable'} maxLength={2000} defaultValue={row.rationale} className={field} /></label>
-    <label className="block text-sm font-medium">Draft disclosure narrative<textarea name="narrative" rows={5} maxLength={12000} defaultValue={row.narrative} className={field} /></label>
+    <label className="block text-sm font-medium">Draft disclosure narrative<textarea name="narrative" rows={5} maxLength={12000}
+      value={narrative} onChange={(event) => setNarrative(event.target.value)} className={field} /></label>
+    {example && <div className="text-sm">
+      <button type="button" className="rounded-md border border-lime-600 px-3 py-2 font-medium disabled:opacity-50"
+        disabled={!!narrative.trim()} onClick={() => setNarrative(example)}>Use mock disclosure in draft</button>
+      {narrative.trim() && <p className="mt-1 text-zinc-600">This action is available when the narrative is empty.</p>}
+    </div>}
     <label className="block text-sm font-medium">Attach evidence
       <select value={method} onChange={(event) => setMethod(event.target.value)} className={field}>
         <option value="none">Keep current evidence</option>
