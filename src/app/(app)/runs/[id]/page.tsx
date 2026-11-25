@@ -48,6 +48,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
     <>
       <PageHead area={`Stress run · ${rec.id}`} title={`${sc.name} · ${rec.input.horizon}`} intro={`${sc.family} scenario, ${rec.input.approach} approach. Run by ${rec.by} on ${when(rec.createdAt)} against dataset ${rec.datasetId}.`}>
         <div className="flex items-center gap-2">
+          {rec.batchId && <Link href={`/runs/batch/${rec.batchId}`} className="text-sm underline">Multi-year report</Link>}
           <Badge tone={rec.status === 'approved' ? 'green' : rec.status === 'submitted' ? 'amber' : rec.status === 'rejected' ? 'red' : 'zinc'}>{rec.status}</Badge>
           <Btn href={`/reports?run=${rec.id}`}>Regulatory pack</Btn>
           <Link href={`/capital?run=${rec.id}`} className="underline">ICAAP</Link>
@@ -101,7 +102,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
         </Card>
       </div>
 
-      {newModel && <Card title="Annual borrower and portfolio ECL" className="mt-6" note={pick.borrower}>
+      {newModel && <Card title="Borrower and portfolio ECL by reporting year" className="mt-6" note={pick.borrower}>
         <ScenarioAnnualResults pathways={annual} />
         <p className="mt-2 text-sm text-zinc-600">Borrower ECL sums {borrowerFacilities.size} linked {borrowerFacilities.size === 1 ? 'facility' : 'facilities'}. PD, LGD and stage refer to the selected facility ({pick.id}).</p>
       </Card>}

@@ -1,13 +1,13 @@
 import { scenarioOf } from './params';
 
-const windows = [
-  { key: 'nz2050', label: 'Orderly transition', first: 2027, last: 2030 },
-  { key: 'delayed', label: 'Disorderly transition', first: 2031, last: 2035 },
-  { key: 'current', label: 'Current policies', first: 2036, last: 2050 },
+const schedule = [
+  { key: 'nz2050', label: 'Orderly transition', years: [2027, 2028, 2029] },
+  { key: 'delayed', label: 'Disorderly transition', years: [2030, 2032, 2034] },
+  { key: 'current', label: 'Current policies', years: [2035, 2040, 2045, 2050] },
 ] as const;
 
-export const GCB_PATHWAYS = windows.map(({ key, label, first, last }) => ({
-  key, label, name: scenarioOf(key).name, years: Array.from({ length: last - first + 1 }, (_, index) => first + index),
+export const GCB_PATHWAYS = schedule.map(({ key, label, years }) => ({
+  key, label, name: scenarioOf(key).name, years: [...years] as number[],
 }));
 
 export function isGcbScenarioYear(scenario: string, year: number) {

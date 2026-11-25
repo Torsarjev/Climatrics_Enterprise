@@ -83,8 +83,10 @@ Overall scores require verified locations, an approved evidenced transition scor
 
 ## Engine III annual scenario and ECL demo
 
-**Scenario analysis** runs three NGFS Phase V pathways over their GCB demonstration windows: Net Zero 2050 (2027–2030), Delayed Transition (2031–2035), and Current Policies (2036–2050). The annual projections interpolate the five-year NiGEM and GCAM source points and use Ghana calibration and CCKP physical proxies. The GDP reference is at most five years back and no earlier than the 2025 start of the source data.
+**Scenario analysis** runs three NGFS Phase V pathways over their GCB demonstration windows: Net Zero 2050 (2027, 2028, 2029), Delayed Transition (2030, 2032, 2034), and Current Policies (2035, 2040, 2045, 2050). The annual projections interpolate the five-year NiGEM and GCAM source points and use Ghana calibration and CCKP physical proxies. The GDP reference is at most five years back and no earlier than the 2025 start of the source data.
 
 New runs use stage-based discounted ECL. Stage 1 captures defaults possible within 12 months, Stage 2 uses default probabilities across remaining maturity, and Stage 3 uses an impaired-exposure LGD shortfall. The demo uses flat conditional annual PD, a straight-line exposure schedule and a lending-rate proxy for the effective interest rate. It reports conditional stress results on a fixed loan snapshot. The results require production data, validated cash-flow and recovery schedules, effective interest rates and common-date scenario probabilities to support an IFRS 9 allowance.
 
 Review the saved run for borrower and portfolio projections across all three windows. **ICAAP** and **ILAAP** are separate downstream views of the selected run. Legacy runs retain their one-year ECL method.
+
+Select any eligible years to save a multi-year batch. Each year has an individual run and an output fingerprint. The batch report and audit CSV compare ECL, incremental provision impact on pre-tax profit, capital and LCR on the same loan-book snapshot. Yearly results are independent stress estimates.

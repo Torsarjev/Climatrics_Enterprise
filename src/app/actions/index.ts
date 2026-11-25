@@ -3,12 +3,12 @@
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { USERS, mfaEnrolledAt, setMfaEnrolled, attachEvidence, audit, createRun, createScreenRun, ingest, reproduce, review, reviewScreenRun, sessionUser } from '@/lib/store';
+import { USERS, mfaEnrolledAt, setMfaEnrolled, attachEvidence, audit, createScenarioBatch, createScreenRun, ingest, reproduce, review, reviewScreenRun, sessionUser } from '@/lib/store';
 import { savePortfolioScreening } from '@/lib/esg/portfolio';
 import type { ScreenInput } from '@/lib/esg/engine';
 import { ACCOUNTS, MFA_COOKIE, SESSION_COOKIE, authConfigured, checkPassword, clearFails, createMfaPending, createSession, lockedFor, mfaRequired, readMfaPending, recordFail, verifyTotp } from '@/lib/auth';
 import { demoExtract } from '@/lib/portfolio';
-import type { Horizon, ScenarioKey } from '@/lib/params';
+import type { ScenarioKey } from '@/lib/params';
 import type { Approach } from '@/lib/engine';
 
 export async function loginAction(_: unknown, form: FormData) {
@@ -91,11 +91,11 @@ export async function ingestAction(_: unknown, form: FormData) {
 export async function runAction(_: unknown, form: FormData) {
   let id: string;
   try {
-    id = await createRun({ scenario: form.get('scenario') as ScenarioKey, horizon: Number(form.get('horizon')) as Horizon, approach: form.get('approach') as Approach });
+    id = await createScenarioBatch({ scenario: form.get('scenario') as ScenarioKey, approach: form.get('approach') as Approach }, form.getAll('horizon').map(Number));
   } catch (e) {
     return { error: (e as Error).message };
   }
-  redirect(`/runs/${id}`);
+  redirect(`/runs/batch/${id}`);
 }
 
 export async function reviewAction(_: unknown, form: FormData) {
