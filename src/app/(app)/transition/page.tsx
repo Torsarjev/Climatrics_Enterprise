@@ -1,5 +1,5 @@
 import { activeLoans } from '@/lib/store';
-import { CREDIT, HORIZONS, SCENARIOS, sectorOf } from '@/lib/params';
+import { CREDIT, SECTORS, sectorOf } from '@/lib/params';
 import { transitionScoreInputs } from '@/lib/engine';
 import { PageHead } from '@/components/ui';
 import { TransitionWorkspace } from '@/components/transition-workspace';
@@ -21,9 +21,9 @@ export default async function TransitionPage() {
   }));
   return (
     <>
-      <PageHead area="Transition risk" title="Transition risk workspace" intro="Run a scenario on the active loan book and trace portfolio results back to each borrower and facility." />
-      <TransitionWorkspace dataset={{ name: dataset.name, id: dataset.id }} facilities={facilities} scenarios={SCENARIOS}
-        horizons={HORIZONS} planRelief={CREDIT.transitionReadinessRelief} />
+      <PageHead area="Transition risk" title="Transition risk workspace" intro="Assess an existing or prospective borrower, or calculate transition risk across the active bank loan book." />
+      <TransitionWorkspace key={dataset.id} dataset={{ name: dataset.name, id: dataset.id }} facilities={facilities}
+        sectorInputs={SECTORS.map((sector) => ({ name: sector.name, sensitivity: sector.transition, benchmark: sector.carbonIntensity }))} planRelief={CREDIT.transitionReadinessRelief} />
     </>
   );
 }
