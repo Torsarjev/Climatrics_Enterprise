@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { db, getRun } from '@/lib/store';
+import { notFound } from 'next/navigation';
+import { IcaapWorkspace } from '@/components/icaap-workspace';
+import { currentUser, db, getRun } from '@/lib/store';
 import { BANK, scenarioOf } from '@/lib/params';
 import { Card, Illustrative, PageHead, Table } from '@/components/ui';
 import { EvidenceCards } from '@/components/evidence-cards';
@@ -7,10 +9,16 @@ import { ghs, pct, pp } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CapitalPage({ searchParams }: { searchParams: Promise<{ run?: string }> }) {
-  const { run: runId } = await searchParams;
+export default async function CapitalPage({ searchParams }: { searchParams: Promise<{ run?: string; assessment?: string }> }) {
+  const { run: runId, assessment } = await searchParams;
   const d = await db();
-  const id = runId ?? d.runs.find((r) => r.status === 'approved')?.id ?? d.runs[0]?.id;
+  if (!runId) {
+    const history = d.icaap ?? [];
+    const selected = assessment ? history.find((item) => item.id === assessment) : history[0];
+    if (assessment && !selected) notFound();
+    return <IcaapWorkspace runs={d.runs} history={history} assessment={selected} user={await currentUser()} />;
+  }
+  const id = runId;
   const found = id ? await getRun(id) : null;
   if (!found) return (<><PageHead area="ICAAP" title="ICAAP" /><p className="text-sm text-zinc-600">No stress runs yet. <Link href="/stress" className="underline">Run one first</Link>.</p></>);
   const { rec, run } = found;
@@ -26,7 +34,7 @@ export default async function CapitalPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageHead area="ICAAP" title="Capital adequacy" intro={`Capital assessment using ${rec.id}: ${scenarioOf(rec.input.scenario).name}, ${rec.input.horizon}.`}><Link href={`/runs/${rec.id}`} className="text-sm underline">Source scenario run</Link><Link href={`/liquidity?run=${rec.id}`} className="text-sm underline">ILAAP</Link></PageHead>
+      <PageHead area="ICAAP" title="Capital adequacy" intro={`Engine III point-in-time bridge using ${rec.id}: ${scenarioOf(rec.input.scenario).name}, ${rec.input.horizon}.`}><Link href={`/runs/${rec.id}`} className="text-sm underline">Source scenario run</Link><Link href="/capital" className="text-sm underline">Climate ICAAP workspace</Link><Link href={`/liquidity?run=${rec.id}`} className="text-sm underline">ILAAP</Link></PageHead>
       <EvidenceCards key={rec.id} label="Capital metrics" items={[
         { id: 'car', label: 'Total capital ratio', value: `${pct(C.carBefore)} → ${pct(C.carAfter)}`, sub: pp(C.carAfter - C.carBefore),
           evidence: <><p>Total capital ÷ risk-weighted assets for each assessment. Climate provisions reduce capital by {amount(C.capitalBefore - C.capitalAfter)} after the modelled tax effect.</p>{capitalRows(C.capitalBefore, C.capitalAfter)}{source}</> },

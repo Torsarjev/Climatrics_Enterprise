@@ -11,6 +11,7 @@ import { CRITERIA, FRAMEWORK_VERSIONS, QUESTIONS } from './esg/rules';
 import * as P from './params';
 import { sha256 } from './math';
 import { CALIBRATION_VERSION, REGRESSION_VERSION, activeCalibration, CalibrationProfile, calibrationEvidence, ghanaShocks, readRegressionWindow, wdiRegression } from './calibration';
+import { ICAAP_VERSION, projectCapital, readFinanceCsv, type FinancePeriod, type IcaapAssessment, type IcaapOpening, type IcaapSource } from './icaap';
 import { scenarioReporting } from './scenario-report';
 import { readBenchmark } from './regression-models';
 import { readMatchedEvidence } from './calibration-regression';
@@ -70,7 +71,7 @@ export interface CalibrationExecution {
   decision?: { action: 'activate' | 'decline'; by: string; at: string; note: string };
 }
 
-interface Db { calibration?: CalibrationProfile; calibrationExecutions?: CalibrationExecution[]; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
+interface Db { icaap?: IcaapAssessment[]; calibration?: CalibrationProfile; calibrationExecutions?: CalibrationExecution[]; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
 
 const g = globalThis as unknown as { __db?: Db; __loans?: Map<string, Loan[]>; __runs?: Map<string, StressRun> };
 g.__loans ??= new Map();
@@ -337,6 +338,117 @@ export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | '
 async function reportingHash(run: StressRun) {
   return sha256(JSON.stringify({ credit: await outHash(run), reporting: scenarioReporting(run),
     input: run.input, ecl: run.summary.ecl, eclStressed: run.summary.eclStressed, capital: run.capital, liquidity: run.liquidity }));
+}
+
+export async function createIcaap(form: FormData) {
+  const user = await currentUser();
+  if (!user.can.includes('run' as never)) throw new Error('Only an analyst can run ICAAP projections.');
+  const d = await db();
+  const runs = GCB_PATHWAYS.flatMap(({ key, years }) => {
+    const batch = String(form.get(key) ?? '');
+    const selected = d.runs.filter((run) => run.batchId === batch && run.input.scenario === key && run.reporting);
+    if (selected.length !== years.length || years.some((year) => !selected.some((run) => run.input.horizon === year))) {
+      throw new Error('Select a complete Engine III batch for each of the three GCB pathways.');
+    }
+    return selected;
+  });
+  const first = runs[0];
+  if (runs.some((run) => run.datasetHash !== first.datasetHash || run.paramsHash !== first.paramsHash || run.input.approach !== first.input.approach || run.status === 'rejected')) {
+    throw new Error('Use non-rejected batches with the same loan book, parameter fingerprint and credit approach.');
+  }
+  const dataset = d.datasets.find(({ id }) => id === first.datasetId);
+  if (!dataset || dataset.hash !== first.datasetHash || !dataset.control.reconciled) throw new Error('The source loan book failed reconciliation.');
+  const loans = await loadDataset(d, dataset.id);
+  validateScenarioLoans(loans);
+  const requiredText = (key: string) => {
+    const value = String(form.get(key) ?? '').trim();
+    if (!value || value.length > 200) throw new Error(`Complete ${key} (up to 200 characters).`);
+    return value;
+  };
+  const amount = (key: string, max = 1e15) => {
+    const value = requiredText(key);
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0 || number > max) throw new Error(`Invalid ${key}.`);
+    return number;
+  };
+  const illustrative = form.get('financeMode') === 'demo';
+  const opening: IcaapOpening = {
+    entity: requiredText('entity'), portfolio: requiredText('portfolio'), asOf: requiredText('asOf'),
+    source: illustrative ? 'Illustrative finance assumptions' : requiredText('source'), illustrative,
+    cet1: amount('cet1'), at1: amount('at1'), tier2: amount('tier2'), reportedCapital: amount('reportedCapital'),
+    provisions: amount('provisions'), tax: amount('tax', 100) / 100,
+    cet1Min: amount('cet1Min', 100) / 100, tier1Min: amount('tier1Min', 100) / 100, totalMin: amount('totalMin', 100) / 100,
+  };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(opening.asOf) || !Number.isFinite(Date.parse(opening.asOf))
+    || new Date(opening.asOf).toISOString().slice(0, 10) !== opening.asOf || opening.asOf >= `${Math.min(...runs.map((run) => run.input.horizon))}-12-31`) {
+    throw new Error('Enter a valid opening date before the first reporting year-end.');
+  }
+  if (Math.abs(opening.cet1 + opening.at1 + opening.tier2 - opening.reportedCapital) > 0.01
+    || !(opening.totalMin >= opening.tier1Min && opening.tier1Min >= opening.cet1Min && opening.cet1Min > 0)) {
+    throw new Error('Opening capital must reconcile to reported capital. Enter positive, ordered CET1, Tier 1 and total requirements.');
+  }
+  const sources: IcaapSource[] = runs.map((rec) => {
+    const { summary } = runCredit(loans, rec.input);
+    const sectors = summary.bySector.filter((row) => row.ead > 0).map((row) => ({ name: row.name, baseline: row.ecl, stressed: row.eclStressed }));
+    const same = (a: number, b: number) => Math.abs(a - b) <= 0.01;
+    if (!same(summary.ecl, rec.headline.ecl) || !same(summary.eclStressed, rec.headline.eclStressed)
+      || !same(sectors.reduce((sum, row) => sum + row.baseline, 0), summary.ecl)
+      || !same(sectors.reduce((sum, row) => sum + row.stressed, 0), summary.eclStressed)) {
+      throw new Error(`Facility, sector and saved ECL failed reconciliation in ${rec.id}.`);
+    }
+    return { scenario: rec.input.scenario, year: rec.input.horizon, runId: rec.id, status: rec.status,
+      version: rec.modelVersion, asOf: opening.asOf, batchId: rec.batchId!, outputHash: rec.outputHash,
+      baseline: summary.ecl, stressed: summary.eclStressed, facilities: summary.loans,
+      borrowers: loans.every((loan) => loan.borrowerId) ? new Set(loans.map((loan) => loan.borrowerId)).size : null, sectors };
+  });
+  const file = form.get('finance');
+  let finance: FinancePeriod[];
+  if (illustrative) {
+    finance = sources.map(({ scenario, year }) => ({ scenario, year, income: 0, writeoffs: 0, recoveries: 0,
+      dividends: 0, adjustments: 0, creditRwa: loans.reduce((sum, loan) => sum + loan.ead, 0),
+      marketRwa: 0, operationalRwa: 0, otherRwa: P.BANK.otherRwa, stressCreditRwaDelta: 0, injection: 0, dividendRestraint: 0, rwaReduction: 0 }));
+  } else {
+    if (!(file instanceof File) || !file.size || file.size > 50000) throw new Error('Upload the completed GHS finance CSV (up to 50 KB).');
+    finance = readFinanceCsv(await file.text(), sources);
+  }
+  const rows = projectCapital(opening, sources, finance);
+  const id = `ICAAP-${randomUUID()}`;
+  const record: IcaapAssessment = {
+    id, version: ICAAP_VERSION, createdAt: now(), by: user.name, datasetId: dataset.id, datasetHash: dataset.hash,
+    evidenceHash: await sha256(JSON.stringify({ opening, rows, version: ICAAP_VERSION, datasetHash: dataset.hash })),
+    opening, rows, status: 'draft',
+  };
+  await updateCalibrationStore((current) => ({
+    ...current, icaap: [record, ...(current.icaap ?? [])],
+    audit: [{ at: record.createdAt, by: user.name, action: 'icaap.created', target: id, detail: record.evidenceHash }, ...current.audit],
+  }));
+  return id;
+}
+
+export async function reviewIcaap(id: string, action: string, note: string) {
+  const user = await currentUser();
+  const at = now();
+  if (!['submit', 'approve', 'reject'].includes(action) || note.length > 1000) throw new Error('Invalid ICAAP review decision.');
+  await updateCalibrationStore((current) => {
+    const record = current.icaap?.find((entry) => entry.id === id);
+    if (!record) throw new Error('ICAAP assessment unavailable.');
+    if (action === 'submit') {
+      if (!user.can.includes('run' as never) || record.by !== user.name || record.status !== 'draft') throw new Error('The maker can submit their draft.');
+    } else if (!user.can.includes('approve' as never) || record.by === user.name || record.status !== 'submitted') {
+      throw new Error('An independent approver must review a submitted assessment.');
+    }
+    if (action === 'approve' && !record.rows.every(({ source }) => current.runs.some((run) =>
+      run.id === source.runId && run.outputHash === source.outputHash && run.status === 'approved'))) {
+      throw new Error('Every source Engine III run must be approved before ICAAP approval.');
+    }
+    const status = action === 'submit' ? 'submitted' : action === 'approve' ? 'approved' : 'rejected';
+    return {
+      ...current, icaap: current.icaap?.map((entry) => entry.id === id ? {
+        ...record, status, ...(action === 'submit' ? {} : { reviewer: user.name, reviewedAt: at, note }),
+      } : entry),
+      audit: [{ at, by: user.name, action: `icaap.${status}`, target: id, detail: note }, ...current.audit],
+    };
+  });
 }
 
 export async function scenarioBatchRuns(id: string) {
