@@ -1,23 +1,38 @@
 import Link from 'next/link';
-import { activeLoans, db, getRun, screenRuns } from '@/lib/store';
+import { db, getRun, screenRuns } from '@/lib/store';
 import { financedBook } from '@/lib/emissions';
 import { portfolioScreening } from '@/lib/esg/portfolio';
 import { boardView } from '@/lib/board';
 import { scenarioOf, sectorOf } from '@/lib/params';
 import { Badge, PageHead, Table } from '@/components/ui';
+import { MultiYearReport } from '@/components/multi-year-report';
+import { latestByPathway, reportingBatches } from '@/lib/reporting-batches';
+import { GCB_PATHWAYS } from '@/lib/gcb-scenarios';
 import { PrintButton } from '@/components/print-button';
 import { ghs, pct, when } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ run?: string }> }) {
-  const { run: runId } = await searchParams;
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ run?: string; batch?: string; audience?: string }> }) {
+  const { run: runId, batch: batchId, audience } = await searchParams;
+  const isBoard = audience === 'board';
   const d = await db();
-  const id = runId ?? d.runs.find((r) => r.status === 'approved')?.id ?? d.runs[0]?.id;
-  const found = id ? await getRun(id) : null;
-  if (!found) return (<><PageHead area="Area 9 · Regulatory reporting" title="Reports" /><p className="text-sm text-zinc-600">No stress runs yet. <Link href="/stress" className="underline">Run one first</Link>.</p></>);
-  const { rec, run } = found;
-  const { loans, dataset } = await activeLoans();
+  const available = reportingBatches(d.runs);
+  const primary = batchId ? available.find((item) => item.id === batchId) :
+    !runId ? available.find((item) => item.approved) ?? available[0] : undefined;
+  const included = primary ? batchId ? [primary] : latestByPathway(available.filter(({ first }) =>
+    first.datasetId === primary.first.datasetId && first.input.approach === primary.first.input.approach && first.paramsHash === primary.first.paramsHash)) : [];
+  const missing = primary && !batchId ? GCB_PATHWAYS.filter((pathway) => !included.some((item) => item.first.input.scenario === pathway.key)) : [];
+  const reference = primary?.records.at(-1);
+  const id = batchId && !primary ? undefined : reference?.id ?? runId ?? d.runs.find((r) => r.status === 'approved')?.id ?? d.runs[0]?.id;
+  const found = id ? await getRun(id, true) : null;
+  if (!found) return (<><PageHead area="Regulatory reporting" title="Climate risk pack" /><p className="text-sm text-zinc-600">{batchId || runId ? 'The requested assessment was not found.' : 'No scenario runs are available.'} <Link href="/stress" className="underline">Scenario analysis</Link></p></>);
+  const { rec, run, loans = [] } = found;
+  const dataset = d.datasets.find((item) => item.id === rec.datasetId)!;
+  const approved = included.length ? included.every((item) => item.approved) : rec.status === 'approved';
+  const packTitle = isBoard ? 'Board climate risk pack' : 'Climate risk regulatory pack';
+  const singleRuns = d.runs.filter((item) => !item.batchId);
+  const baseHref = isBoard ? '/reports?audience=board' : '/reports';
   const S = run.summary, C = run.capital, Q = run.liquidity, L = run.lossDist;
   const ead = S.ead;
   const carbon = loans.filter((l) => sectorOf(l.sector).transition >= 0.5).reduce((a, l) => a + l.ead, 0);
@@ -31,23 +46,47 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageHead area="Engine IV · Regulatory & management reporting" title="Climate risk regulatory pack" intro="Generated from an approved run. Structured to support Bank of Ghana climate-related disclosure and IFRS S2 metrics.">
-        <div className="no-print flex items-center gap-2">
-          {d.runs.length > 1 && <span className="text-xs text-zinc-500">Run:</span>}
-          {d.runs.slice(0, 5).map((r) => <Link key={r.id} href={`/reports?run=${r.id}`} className={`font-mono text-xs ${r.id === rec.id ? 'font-bold underline' : 'text-zinc-500'}`}>{r.id}</Link>)}
+      <div className="no-print"><PageHead area="Engine IV · Regulatory & management reporting" title={packTitle} intro="Standardized climate stress reporting for Bank of Ghana and Board review.">
+        <div className="flex flex-wrap items-end gap-3">
+          <Link href={baseHref} className="text-sm underline">Standard pack</Link>
+          {available.length > 0 && <form action="/reports" method="get" className="flex flex-wrap items-end gap-2">
+            {isBoard && <input type="hidden" name="audience" value="board" />}
+            <label className="text-sm">Saved multi-year batch
+              <select name="batch" defaultValue={primary?.id ?? ''} className="mt-1 block max-w-full rounded border border-zinc-300 bg-white p-2">
+                {!primary && <option value="" disabled>Select a batch</option>}
+                {available.map((item) => <option key={item.id} value={item.id}>{scenarioOf(item.first.input.scenario).name} · {item.records.map((r) => r.input.horizon).join(', ')} · {item.first.input.approach} · {when(item.first.createdAt)}</option>)}
+              </select>
+            </label>
+            <button className="rounded bg-lime-200 px-3 py-2 text-sm font-semibold">Open batch pack</button>
+          </form>}
           <PrintButton />
         </div>
-      </PageHead>
+      </PageHead></div>
+      {singleRuns.length > 0 && <details className="no-print mb-4 text-sm">
+        <summary className="cursor-pointer font-medium">Saved single-year runs</summary>
+        <div className="mt-2 flex flex-wrap gap-3">{singleRuns.map((item) => (
+          <Link key={item.id} href={`/reports?run=${item.id}${isBoard ? '&audience=board' : ''}`} className="underline">{item.id} · {scenarioOf(item.input.scenario).name} · {item.input.horizon}</Link>
+        ))}</div>
+      </details>}
 
-      <article className="space-y-6 rounded-lg border border-zinc-200 bg-white p-8 print:border-0 print:p-0">
-        {rec.status !== 'approved' && (
-          <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">DRAFT: this run has not been approved and is not for submission. Approve it on the run page first.</p>
-        )}
-        <header className="border-b border-zinc-200 pb-4">
-          <p className="text-xs uppercase tracking-wider text-zinc-500">Demo Bank Ghana · Climate Risk Stress Test Report · synthetic</p>
-          <h2 className="mt-1 text-xl font-semibold">{scenarioOf(rec.input.scenario).name} · horizon {rec.input.horizon}</h2>
-          <p className="mt-1 text-sm text-zinc-600">Reporting date 30 Sep 2026 · Run {rec.id} · {rec.input.approach} · status <Badge tone={rec.status === 'approved' ? 'green' : 'amber'}>{rec.status}</Badge>{rec.reviewedBy && ` · approved by ${rec.reviewedBy}`}</p>
-        </header>
+      <article className="space-y-6 rounded-lg border border-zinc-200 bg-white p-4 sm:p-8 print:border-0 print:p-0">
+        {!approved && <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">DRAFT · The pack includes results that have not been approved. Obtain approval for every included year before submitting.</p>}
+        <div className="border-b border-zinc-200 pb-4">
+          <p className="text-xs uppercase tracking-wider text-zinc-500">Demo Bank Ghana · synthetic</p>
+          <h2 className="mt-1 text-xl font-semibold">{packTitle}</h2>
+          <p className="mt-1 text-sm text-zinc-600">Loan-book snapshot {dataset.name} · {dataset.id} · {rec.input.approach}</p>
+        </div>
+        {included.length > 0 && <section aria-labelledby="pack-scenarios">
+          <h3 id="pack-scenarios" className="mb-2 text-base font-semibold">Multi-year climate scenario results</h3>
+          {!batchId && <p className="mb-3 text-sm text-zinc-600">The standard pack selects one saved batch per pathway, prioritising approved batches that share the same loan-book snapshot, approach and parameter fingerprint.</p>}
+          {missing.length > 0 && <p className="mb-3 text-sm text-amber-900">No comparable saved batch for {missing.map((item) => item.name).join(', ')}.</p>}
+          <MultiYearReport batches={included} />
+        </section>}
+        <div className="rounded-lg bg-lime-50 p-3 text-sm">
+          <p className="font-semibold">Detailed reference run</p>
+          <p>{scenarioOf(rec.input.scenario).name} · {rec.input.horizon} · <Link href={`/runs/${rec.id}`} className="underline">{rec.id}</Link> · <Badge tone={rec.status === 'approved' ? 'green' : 'amber'}>{rec.status}</Badge></p>
+          {rec.batchId && !included.length && <Link href={`/reports?batch=${rec.batchId}${isBoard ? '&audience=board' : ''}`} className="mt-1 inline-block underline">Open multi-year pack</Link>}
+        </div>
 
         <section>
           <h3 className="mb-2 text-sm font-semibold">1. Summary</h3>
@@ -111,7 +150,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <Table head={['Limit', 'Current', 'Limit', 'Status']} align={['l', 'r', 'r', 'l']} rows={V.limits.map((l) => [`${l.id} ${l.metric}`, l.display, l.limitDisplay, <Badge key={l.id} tone={l.status === 'breach' ? 'red' : l.status === 'warning' ? 'amber' : 'green'}>{l.status === 'breach' ? 'Breach' : l.status === 'warning' ? 'Early warning' : 'Within'}</Badge>])} />
           <p className="mt-3 text-xs font-semibold uppercase text-zinc-500">Open actions ({V.actions.length})</p>
           <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-700">{V.actions.slice(0, 8).map((a, i) => <li key={i}>{a.subject}: {a.action} ({a.owner})</li>)}</ul>
-          <p className="mt-2 text-xs text-zinc-500">Limits are assessed on the active portfolio across all three NGFS views, not only this run. Thresholds are illustrative until set by the Board.</p>
+          <p className="mt-2 text-xs text-zinc-500">Risk appetite indicators are recalculated on the reference loan-book snapshot. Screening and action status reflect the governance register at view time. Thresholds are illustrative until set by the Board.</p>
         </section>
 
         <section>
@@ -119,7 +158,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-700">
             <li>Data: {dataset.name} ({dataset.id}, SHA-256 {dataset.hash.slice(0, 16)}…), {dataset.control.rowsAccepted} facilities accepted, {dataset.control.rowsRejected} rejected, reconciled.</li>
             <li>Model {rec.modelVersion}; hazard data {rec.hazardVersion}; parameters {rec.paramsHash.slice(0, 16)}…; loss simulation seed {rec.seed}.</li>
-            <li>Prepared by {rec.by} on {when(rec.createdAt)}{rec.reviewedBy ? `; approved by ${rec.reviewedBy} on ${rec.reviewedAt ? when(rec.reviewedAt) : ''}` : '; not yet approved'}.</li>
+            <li>Prepared by {rec.by} on {when(rec.createdAt)}{rec.reviewedBy ? `; ${rec.status === 'approved' ? 'approved' : 'reviewed'} by ${rec.reviewedBy} on ${rec.reviewedAt ? when(rec.reviewedAt) : ''}` : '; not yet approved'}.</li>
             <li>Limitations: synthetic portfolio; illustrative scenario and model parameters pending methodology sign-off and independent validation.</li>
           </ul>
         </section>
