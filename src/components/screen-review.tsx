@@ -7,8 +7,8 @@ import { btnClass, btnGhost } from './ui';
 
 type EvidenceItem = { id: string; label: string; ref?: string };
 
-export function ScreenReview({ id, status, canRun, canApprove, isMaker, provided, approvalBlock }: {
-  id: string; status: string; canRun: boolean; canApprove: boolean; isMaker: boolean; provided: EvidenceItem[]; approvalBlock?: string;
+export function ScreenReview({ id, status, canRun, canApprove, isMaker, provided, approvalBlock, rulesWarning }: {
+  id: string; status: string; canRun: boolean; canApprove: boolean; isMaker: boolean; provided: EvidenceItem[]; approvalBlock?: string; rulesWarning?: string;
 }) {
   const [state, act, pending] = useActionState(screenReviewAction, null);
   const message = (text: string) => <p className="text-sm text-zinc-600">{text}</p>;
@@ -36,6 +36,7 @@ export function ScreenReview({ id, status, canRun, canApprove, isMaker, provided
       <input type="hidden" name="id" value={id} />
       <p className="text-sm text-zinc-600">Review the <a href="#management-actions" className="underline">management actions</a> and <a href="#evidence" className="underline">evidence record</a>, then record your decision on the assessment.</p>
       {approvalBlock && <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-900">{approvalBlock}</p>}
+      {rulesWarning && !approvalBlock && <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-900">{rulesWarning}</p>}
       {provided.length > 0 && !approvalBlock && <fieldset className="space-y-1 rounded-md border border-zinc-200 p-3 text-sm">
         <legend className="px-1 font-medium">Select evidence verified for approval</legend>
         {provided.map((item) => <label key={item.id} className="flex items-start gap-2"><input className="mt-1" type="checkbox" name="verifiedEvidence" value={item.id} /><span>{item.label} · {item.ref}</span></label>)}

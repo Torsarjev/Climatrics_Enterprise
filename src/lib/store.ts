@@ -43,7 +43,7 @@ export interface ScreenRunRecord {
   id: string; createdAt: string; by: string; facilityId: string; borrower: string; parent?: string;
   input: ScreenInput; datasetId?: string; result?: ScreenResult; reviewedResult?: ScreenResult; rulesHash: string; versions: Record<string, string>;
   status: 'draft' | 'submitted' | 'approved' | 'escalated' | 'returned';
-  verifiedEvidence?: string[]; submittedBy?: string; reviewedBy?: string; reviewedAt?: string; note?: string;
+  verifiedEvidence?: string[]; submittedBy?: string; reviewedBy?: string; reviewedAt?: string; note?: string; supersededRules?: boolean;
 }
 interface CalibrationPreviewRow {
   scenario: P.ScenarioKey;
@@ -454,7 +454,7 @@ export async function reviewScreenRun(id: string, action: 'submit' | 'approve' |
     if (rec.status !== 'submitted') throw new Error('The screening must be submitted first');
     if (rec.by === u.name || rec.submittedBy === u.name) throw new Error('Maker-checker: you cannot review your own screening');
     if (action === 'approve') {
-      if (rec.rulesHash !== await rulesHash()) throw new Error('Re-screen with the current rules before approving');
+      rec.supersededRules = rec.rulesHash !== await rulesHash();
       if (rec.status !== 'submitted') throw new Error('The screening has already been reviewed');
       if (!Array.isArray(verifiedEvidence) || verifiedEvidence.some((id) => rec.input.evidence[id]?.status !== 'provided' || !rec.input.evidence[id].ref?.trim())) throw new Error('Select only provided evidence with a document reference');
       const reviewed = { ...rec, verifiedEvidence: [...new Set(verifiedEvidence)] };
@@ -466,6 +466,6 @@ export async function reviewScreenRun(id: string, action: 'submit' | 'approve' |
     rec.status = action === 'approve' ? 'approved' : action === 'escalate' ? 'escalated' : 'returned';
     rec.reviewedBy = u.name; rec.reviewedAt = now(); rec.note = note;
   }
-  d.audit.unshift({ at: now(), by: u.name, action: `screening.${action === 'submit' ? 'submitted' : action === 'approve' ? 'approved' : action === 'escalate' ? 'escalated' : 'returned'}`, target: id, detail: [note, action === 'approve' && rec.verifiedEvidence?.length ? `evidence verified: ${rec.verifiedEvidence.join(', ')}` : ''].filter(Boolean).join(' · ') || undefined });
+  d.audit.unshift({ at: now(), by: u.name, action: `screening.${action === 'submit' ? 'submitted' : action === 'approve' ? 'approved' : action === 'escalate' ? 'escalated' : 'returned'}`, target: id, detail: [note, action === 'approve' && rec.verifiedEvidence?.length ? `evidence verified: ${rec.verifiedEvidence.join(', ')}` : '', action === 'approve' && rec.supersededRules ? 'approved under superseded screening rules' : ''].filter(Boolean).join(' · ') || undefined });
   await save(d);
 }

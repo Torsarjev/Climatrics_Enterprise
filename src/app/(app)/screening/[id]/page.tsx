@@ -50,8 +50,9 @@ export default async function ScreenRunPage({ params }: { params: Promise<{ id: 
         <Card title="Review and approval" note={<Link href="/screening/review" className="underline">Screening review queue</Link>}>
           {rec.status === 'submitted' && <p className="mb-3 text-sm font-medium">Submitted by {rec.submittedBy ?? rec.by} · Awaiting independent review</p>}
           <ScreenReview id={rec.id} status={rec.status} canRun={user.can.includes('run' as never)} canApprove={user.can.includes('approve' as never)} isMaker={rec.by === user.name || rec.submittedBy === user.name} provided={provided}
-            approvalBlock={!currentRules ? 'The analyst must re-screen under the current rules before approval.' : R.esms.gate !== 'pass' ? 'The exclusion gate must pass before approval. Escalate or return this assessment.' : undefined} />
-          {rec.reviewedBy && <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-600">{rec.status === 'returned' ? 'Returned by' : rec.status === 'submitted' ? 'Previously returned by' : 'Reviewed by'} {rec.reviewedBy} {rec.reviewedAt && `on ${when(rec.reviewedAt)}`}{rec.note ? ` · “${rec.note}”` : ''}</p>}
+            approvalBlock={R.esms.gate !== 'pass' ? 'The exclusion gate must pass before approval. Escalate or return this assessment.' : undefined}
+            rulesWarning={!currentRules ? 'This assessment was screened under earlier rules. You can approve it; the approval is recorded as made under superseded rules, and its aligned exposure is not reported until it is re-screened.' : undefined} />
+          {rec.reviewedBy && <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-600">{rec.status === 'returned' ? 'Returned by' : rec.status === 'submitted' ? 'Previously returned by' : 'Reviewed by'} {rec.reviewedBy} {rec.reviewedAt && `on ${when(rec.reviewedAt)}`}{rec.note ? ` · “${rec.note}”` : ''}{rec.status === 'approved' && rec.supersededRules ? ' · approved under superseded rules' : ''}</p>}
         </Card>
       </section>
 
