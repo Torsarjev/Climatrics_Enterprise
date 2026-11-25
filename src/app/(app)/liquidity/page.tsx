@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { db, getRun } from '@/lib/store';
 import { scenarioOf } from '@/lib/params';
-import { Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
+import { Card, Illustrative, PageHead, Table } from '@/components/ui';
+import { EvidenceCards } from '@/components/evidence-cards';
 import { ghs, pct, pp } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
@@ -15,15 +16,29 @@ export default async function LiquidityPage({ searchParams }: { searchParams: Pr
   const { run, rec } = found;
   const liquidity = run.liquidity;
 
+  const grossBefore = liquidity.segments.reduce((sum, item) => sum + item.outBase, liquidity.drawBase);
+  const grossAfter = liquidity.segments.reduce((sum, item) => sum + item.outClimate, liquidity.drawStressed);
+  const netOutflows = (gross: number) => Math.max(gross - Math.min(liquidity.inflows, gross * 0.75), 1);
+  const source = <Link href={`/runs/${rec.id}`} className="underline">Open source run {rec.id}</Link>;
+
   return <>
     <PageHead area="ILAAP" title="Liquidity adequacy" intro={`Liquidity assessment using ${rec.id}: ${scenarioOf(rec.input.scenario).name}, ${rec.input.horizon}.`}>
       <Link href={`/runs/${rec.id}`} className="text-sm underline">Source scenario run</Link>
     </PageHead>
-    <div className="grid gap-3 sm:grid-cols-3">
-      <Stat label="Liquidity coverage ratio" value={`${pct(liquidity.lcrBefore)} → ${pct(liquidity.lcrAfter)}`} sub={pp(liquidity.lcrAfter - liquidity.lcrBefore)} />
-      <Stat label="Headroom to minimum" value={pp(liquidity.lcrAfter - liquidity.minimum)} sub={`Minimum ${pct(liquidity.minimum, 0)}`} />
-      <Stat label="High-quality liquid assets" value={ghs(liquidity.hqla)} />
-    </div>
+    <EvidenceCards key={rec.id} label="Liquidity metrics" items={[
+      { id: 'lcr', label: 'Liquidity coverage ratio', value: `${pct(liquidity.lcrBefore)} → ${pct(liquidity.lcrAfter)}`, sub: pp(liquidity.lcrAfter - liquidity.lcrBefore),
+        evidence: <><p>High-quality liquid assets ÷ net cash outflows. The model uses the same eligible inflows in both calculations, caps the deduction at 75% of gross outflows, and floors net outflows at GHS 1.</p>
+          <Table head={['Input', 'Baseline', 'Stressed']} rows={[
+            ['High-quality liquid assets', ghs(liquidity.hqla), ghs(liquidity.hqla)],
+            ['Gross outflows', ghs(grossBefore), ghs(grossAfter)],
+            ['Inflows deducted', ghs(Math.min(liquidity.inflows, grossBefore * 0.75)), ghs(Math.min(liquidity.inflows, grossAfter * 0.75))],
+            ['Net outflows', ghs(netOutflows(grossBefore)), ghs(netOutflows(grossAfter))],
+          ]} />{source}</> },
+      { id: 'headroom', label: 'Headroom to minimum', value: pp(liquidity.lcrAfter - liquidity.minimum), sub: `Minimum ${pct(liquidity.minimum, 0)}`,
+        evidence: <><p>Stressed LCR ({pct(liquidity.lcrAfter, 4)}) minus the configured liquidity minimum ({pct(liquidity.minimum, 4)}). A negative result indicates a breach of the model minimum.</p>{source}</> },
+      { id: 'hqla', label: 'High-quality liquid assets', value: ghs(liquidity.hqla),
+        evidence: <><p>GHS {liquidity.hqla.toLocaleString('en-GB')} is the illustrative Treasury balance configured in the bank model. The same balance is used for the baseline and stressed LCR. The selected scenario changes modelled cash flows.</p>{source}</> },
+    ]} />
     <Card title="Cash outflows under climate stress" className="mt-6">
       <Table head={['Item', 'Baseline', 'Stressed']} rows={[
         ...liquidity.segments.map((item) => [`${item.segment.toUpperCase()} deposit outflows`, ghs(item.outBase), ghs(item.outClimate)]),

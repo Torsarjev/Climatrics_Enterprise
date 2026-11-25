@@ -23,7 +23,7 @@ const NAV = [
   ['/liquidity', 'ILAAP · Liquidity adequacy', 'capital'],
   ['/emissions', 'Carbon accounting', 'emissions'],
   ['/screening/portfolio', 'Portfolio screening', 'sdg'],
-  ['/disclosure', 'IFRS S2 disclosure', 'disclosure'],
+  ['/disclosure', 'IFRS S1/S2 disclosure', 'disclosure'],
   ['/reports', 'Regulatory reports', 'reports'],
   ['/governance', 'Model governance', 'governance'],
   ['/methodology', 'Methodology', 'disclosure'],
