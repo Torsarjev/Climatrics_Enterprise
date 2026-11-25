@@ -35,10 +35,50 @@ const STACK = [
   ['Security', 'RBAC · MFA · SSO · encryption · audit logging', 'GCB identity provider, least privilege, TLS 1.2+ and AES-256, every action logged'],
 ];
 
+const ENGINE_BOXES = [
+  ['Engine I', 'ESMS screening', 'SDG classification', '/screening'],
+  ['Engine II', 'Geospatial hazards', 'Exposure & vulnerability', '/physical'],
+  ['Engine III', 'DSCR → ECL', 'Portfolio Climate ICAAP / ILAAP', '/stress'],
+  ['Engine IV', 'IFRS S1 / S2', 'BoG evidence mapping', '/reports'],
+  ['Engine V', 'Carbon accounting', 'Financed emissions', '/emissions'],
+];
+
+const Box = ({ title, sub, strong, href }: { title: string; sub: string; strong?: boolean; href?: string }) => {
+  const body = <><p className="text-xs font-bold uppercase tracking-wide text-[#1f3d12]">{title}</p><p className="mt-1 text-xs text-zinc-700">{sub}</p></>;
+  const cls = `block rounded-lg border-2 border-[#7aa63a] px-3 py-2.5 text-center ${strong ? 'bg-[#e2f2b8]' : 'bg-[#f3f9e6]'}`;
+  return href ? <Link href={href} className={`${cls} hover:border-[#4f7a1f] hover:bg-[#e2f2b8]`}>{body}</Link> : <div className={cls}>{body}</div>;
+};
+const Down = () => <div aria-hidden className="flex justify-center py-1 text-[#7aa63a]">▼</div>;
+
+function SystemDiagram() {
+  return (
+    <figure aria-label="ClimaTRICs Enterprise end-to-end system architecture">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Box title="GCB internal banking data" sub="Borrowers · Credit · Collateral · Capital · Treasury · ALM" href="/data" />
+        <Box title="Climate & external reference data" sub="CCKP · ERA5 · Open-Meteo · NASA · NGFS · Flood maps" href="/calibration" />
+      </div>
+      <Down />
+      <Box strong title="Secure data integration & control" sub="API / SFTP · ETL · Geocoding · Quality checks · Access controls · Source lineage" href="/data" />
+      <Down />
+      <Box title="Shared data, scenario & model services" sub="Portfolio / geospatial store · Scenario registry · Model versions · Evidence repository · Audit log" href="/governance" />
+      <Down />
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {ENGINE_BOXES.map(([t, a, b, href]) => <Box key={t} strong title={t} sub={`${a} · ${b}`} href={href} />)}
+      </div>
+      <Down />
+      <Box title="Engine VI | Climate governance dashboard" sub="Board appetite · KRIs · Portfolio heatmaps · Targets vs actuals · Alerts · Approvals" href="/board" />
+      <Down />
+      <p className="text-center text-xs font-bold uppercase tracking-wide text-[#1f3d12]">Role-based user interfaces · Regulatory reporting · Management decisions</p>
+      <figcaption className="mt-4 text-xs text-zinc-500">From the Technical Proposal, section 2. A logically separated ingestion plane, climate and banking data plane, analytics plane and presentation/evidence plane. Data flows only through approved interfaces with role-based permissions, and bank customer data stays within the deployment boundary GCB approves. Click any box to open that part of the prototype.</figcaption>
+    </figure>
+  );
+}
+
 export default function ArchitecturePage() {
   return (
     <>
       <PageHead area="Areas 10–11 · Architecture, security & delivery" title="Architecture" intro="Modular services behind an API gateway, batch jobs for heavy runs, and a governed data layer. Every component can scale independently." />
+      <Card title="ClimaTRICs Enterprise · End-to-end system architecture" className="mb-6"><SystemDiagram /></Card>
       <Card title="Reference architecture">
         <div className="space-y-2">
           {LAYERS.map(([t, s, bg]) => (
