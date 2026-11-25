@@ -29,3 +29,14 @@ export async function writeText(key: string, value: string) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, key), value);
 }
+
+export async function updateExistingBlob(key: string, update: (text: string) => string) {
+  const store = blobs();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const entry = await store.getWithMetadata(key);
+    if (!entry?.etag) throw new Error('Cannot identify the current scenario register');
+    const result = await store.set(key, update(entry.data), { onlyIfMatch: entry.etag });
+    if (result.modified) return;
+  }
+  throw new Error('The scenario register changed during this assessment. Run it again.');
+}

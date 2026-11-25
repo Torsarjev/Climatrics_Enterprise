@@ -29,7 +29,7 @@ export function ScenarioAnnualResults({ pathways }: { pathways: { key: string; l
       </div>
       <Table head={['Year', 'Portfolio ECL', 'Borrower ECL', 'Facility PD', 'Facility LGD', 'Facility stage']}
         rows={pathway.points.map((point) => [point.year, ghs(point.portfolioEcl), ghs(point.borrowerEcl), pct(point.pd, 2), pct(point.lgd, 2), point.stage])} />
-      <p className="mt-3 text-sm text-zinc-600">Each year applies its own shocks to the saved loan-book snapshot. Values are annual stress views with a common chart scale. ECL is calculated as of each projection year and the yearly totals are shown individually.</p>
+      <p className="mt-3 text-sm text-zinc-600">Each year applies its own shocks to the saved loan-book snapshot. Columns show the selected reporting years on a common chart scale. ECL is calculated as of each projection year and the reporting years are shown individually.</p>
     </>
   );
 }

@@ -1,4 +1,5 @@
 import 'server-only';
+import { randomUUID } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { SESSION_COOKIE, readSession } from './auth';
@@ -10,9 +11,10 @@ import { CRITERIA, FRAMEWORK_VERSIONS, QUESTIONS } from './esg/rules';
 import * as P from './params';
 import { sha256 } from './math';
 import { CALIBRATION_VERSION, ghanaShocks } from './calibration';
+import { scenarioReporting } from './scenario-report';
 import { isGcbScenarioYear } from './gcb-scenarios';
 import { MAX_ECL_MATURITY, STAGED_ECL_MODEL } from './staged-ecl';
-import { onNetlify, readText, writeText } from './kv';
+import { onNetlify, readText, updateExistingBlob, writeText } from './kv';
 import { CCKP } from '@/data/cckp';
 import { NGFS } from '@/data/ngfs';
 import { WORLD_BANK } from '@/data/worldbank';
@@ -29,6 +31,8 @@ export interface RunRecord {
   id: string; createdAt: string; by: string; input: RunInput; datasetId: string; datasetHash: string;
   modelVersion: string; hazardVersion: string; paramsHash: string; outputHash: string; seed: number;
   status: 'draft' | 'submitted' | 'approved' | 'rejected'; submittedBy?: string; reviewedBy?: string; reviewedAt?: string; note?: string;
+  batchId?: string;
+  reporting?: ReturnType<typeof scenarioReporting>;
   headline: { ecl: number; eclStressed: number; carBefore: number; carAfter: number; lcrAfter: number; var999: number };
 }
 export interface AuditEvent { at: string; by: string; action: string; target: string; detail?: string }
@@ -129,39 +133,83 @@ async function runParamsHash(input: RunInput) {
   return input.eclModel ? sha256(JSON.stringify({ base, eclModel: input.eclModel, transmission: P.TRANSMISSION, damage: P.DEPTH_DAMAGE, calibration: CALIBRATION_VERSION, CCKP, NGFS, WORLD_BANK })) : base;
 }
 
-export async function createRun(input: RunInput) {
-  const d = await db(), u = await currentUser();
-  if (!u.can.includes('run' as never)) throw new Error('Your role cannot run stress tests');
-  if (!isGcbScenarioYear(input.scenario, input.horizon) || !['bottom-up', 'top-down'].includes(input.approach)) {
-    throw new Error('Select a GCB pathway, eligible year and assessment approach');
+export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | 'approach'>, years: number[]) {
+  const user = await currentUser();
+  if (!user.can.includes('run' as never)) throw new Error('Your role cannot run stress tests');
+  const horizons = [...new Set(years)].sort((a, b) => a - b);
+  if (!horizons.length || horizons.some((year) => !isGcbScenarioYear(request.scenario, year)) || !['bottom-up', 'top-down'].includes(request.approach)) {
+    throw new Error('Select eligible reporting years for the GCB pathway and an assessment approach');
   }
-  input = { ...input, eclModel: STAGED_ECL_MODEL };
+
   const { dataset, loans } = await activeLoans();
   if (!loans.length) throw new Error('Load a loan book before running a scenario');
   const invalidExposure = loans.find((loan) => !Number.isFinite(loan.ead) || loan.ead <= 0);
   if (invalidExposure) throw new Error(`Review outstanding exposure for facility ${invalidExposure.id}`);
   const invalid = loans.find((loan) => !Number.isFinite(loan.maturityYears) || loan.maturityYears <= 0 || loan.maturityYears > MAX_ECL_MATURITY || ![1, 2, 3].includes(loan.stage));
   if (invalid) throw new Error(`Review remaining maturity (0 < years ≤ ${MAX_ECL_MATURITY}) and IFRS 9 stage for facility ${invalid.id}`);
-  const run = runStress(loans, input);
-  const id = `RUN-${String(d.runs.length + 1).padStart(4, '0')}`;
-  const rec: RunRecord = {
-    id, createdAt: now(), by: u.name, input, datasetId: dataset.id, datasetHash: dataset.hash,
-    modelVersion: run.modelVersion, hazardVersion: P.HAZARD_DATA_VERSION, paramsHash: await runParamsHash(input), outputHash: await outHash(run), seed: P.LOSS_DIST.seed,
-    status: 'draft',
-    headline: { ecl: run.summary.ecl, eclStressed: run.summary.eclStressed, carBefore: run.capital.carBefore, carAfter: run.capital.carAfter, lcrAfter: run.liquidity.lcrAfter, var999: run.lossDist.stressed.var999 },
+
+  const batchId = `BATCH-${randomUUID()}`;
+  const createdAt = now();
+  const input = { ...request, eclModel: STAGED_ECL_MODEL };
+  const fingerprint = await runParamsHash({ ...input, horizon: horizons[0] });
+  const calculated = await Promise.all(horizons.map(async (horizon) => {
+    const run = runStress(loans, { ...input, horizon });
+    const reporting = scenarioReporting(run);
+    const headline = { ecl: run.summary.ecl, eclStressed: run.summary.eclStressed, carBefore: run.capital.carBefore,
+      carAfter: run.capital.carAfter, lcrAfter: run.liquidity.lcrAfter, var999: run.lossDist.stressed.var999 };
+    const rec: Omit<RunRecord, 'id'> = {
+      batchId, createdAt, by: user.name, input: run.input, datasetId: dataset.id, datasetHash: dataset.hash,
+      modelVersion: run.modelVersion, hazardVersion: P.HAZARD_DATA_VERSION, paramsHash: fingerprint,
+      outputHash: await reportingHash(run), seed: P.LOSS_DIST.seed, status: 'draft', reporting, headline,
+    };
+    return { rec, run };
+  }));
+
+  const insert = (current: Db) => {
+    const records = calculated.map(({ rec }, index) => ({
+      ...rec, id: `RUN-${String(current.runs.length + index + 1).padStart(4, '0')}`,
+    }));
+    current.runs.unshift(...[...records].reverse());
+    current.audit.unshift(
+      { at: createdAt, by: user.name, action: 'scenario.batch_created', target: batchId,
+        detail: `${P.scenarioOf(input.scenario).name} · ${horizons.join(', ')} · ${input.approach} · dataset ${dataset.id}` },
+      ...records.map((rec) => ({ at: createdAt, by: user.name, action: 'run.created', target: rec.id,
+        detail: `${rec.input.horizon} · ${batchId} · dataset ${dataset.id}` })),
+    );
+    return records;
   };
-  d.runs.unshift(rec);
-  g.__runs!.set(id, run);
-  d.audit.unshift({ at: now(), by: u.name, action: 'run.created', target: id, detail: `${P.scenarioOf(input.scenario).name} · ${input.horizon} · ${input.approach} · dataset ${dataset.id}` });
-  await save(d);
-  return id;
+
+  if (onNetlify) {
+    await updateExistingBlob('store.json', (text) => {
+      const current = JSON.parse(text) as Db;
+      insert(current);
+      return JSON.stringify(current, null, 1);
+    });
+  } else {
+    const current = await db();
+    const updated = { ...current, runs: [...current.runs], audit: [...current.audit] };
+    const records = insert(updated);
+    await save(updated);
+    records.forEach((rec, index) => g.__runs!.set(rec.id, calculated[index].run));
+  }
+  return batchId;
+}
+
+async function reportingHash(run: StressRun) {
+  return sha256(JSON.stringify({ credit: await outHash(run), reporting: scenarioReporting(run),
+    input: run.input, ecl: run.summary.ecl, eclStressed: run.summary.eclStressed, capital: run.capital, liquidity: run.liquidity }));
+}
+
+export async function scenarioBatchRuns(id: string) {
+  const { runs } = await db();
+  return runs.filter((rec) => rec.batchId === id && rec.reporting).sort((a, b) => a.input.horizon - b.input.horizon);
 }
 
 export async function reproduce(id: string) {
   const d = await db(), u = await currentUser();
   const rec = d.runs.find((r) => r.id === id)!;
   const run = runStress(await loadDataset(d, rec.datasetId), rec.input);
-  const [o, p] = [await outHash(run), await runParamsHash(rec.input)];
+  const [o, p] = [await (rec.reporting ? reportingHash(run) : outHash(run)), await runParamsHash(rec.input)];
   const ok = o === rec.outputHash && p === rec.paramsHash;
   d.audit.unshift({ at: now(), by: u.name, action: 'run.reproduced', target: id, detail: ok ? 'Output hash matches: result reproduced exactly' : 'MISMATCH: inputs or parameters have changed' });
   await save(d);
