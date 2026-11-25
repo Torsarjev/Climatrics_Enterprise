@@ -2,8 +2,9 @@ import Link from 'next/link';
 import { activeLoans, screenRuns } from '@/lib/store';
 import { COLLATERAL, CREDIT, REGIONS, sectorOf } from '@/lib/params';
 import { assessPortfolio, hazardEvidence, hazardSource, HIGH_PHYSICAL_RISK, MATERIAL_HAZARD, remediationShortlist, SITE_EXPOSURE_REFERENCE } from '@/lib/physical-risk';
-import { Bars, Card, PageHead, Stat, Table } from '@/components/ui';
+import { Card, PageHead, Table } from '@/components/ui';
 import { RiskMap } from '@/components/risk-map-lazy';
+import { PhysicalPortfolioDashboard } from '@/components/physical-portfolio-dashboard';
 import { BorrowerSelector } from '@/components/borrower-selector';
 import { transitionScore, transitionScoreInputs } from '@/lib/engine';
 import { ghs, pct, to5 } from '@/lib/fmt';
@@ -11,7 +12,6 @@ import { ghs, pct, to5 } from '@/lib/fmt';
 export const dynamic = 'force-dynamic';
 
 const scoreLabel = (score: number | null) => score === null ? 'Pending' : `${score.toFixed(2)} / 5`;
-const profileHref = (id: string) => ({ pathname: '/physical', query: { borrower: id }, hash: 'borrower-risk' });
 
 export default async function PhysicalPage({ searchParams }: { searchParams: Promise<{ borrower?: string }> }) {
   const { dataset, loans } = await activeLoans();
@@ -24,37 +24,27 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
   const actions = selected ? remediationShortlist(selected) : [];
   const ead = borrowers.reduce((sum, item) => sum + item.ead, 0);
   const sumExposure = (profiles: typeof borrowers) => profiles.reduce((sum, profile) => sum + profile.ead, 0);
-  const high = borrowers.filter((item) => item.physical >= HIGH_PHYSICAL_RISK);
-  const highEad = sumExposure(high);
+  const highEad = facilities.filter((item) => item.physical >= HIGH_PHYSICAL_RISK).reduce((sum, item) => sum + item.loan.ead, 0);
   const approvedTransition = borrowers.filter((item) => item.transition !== null);
   const highTransition = approvedTransition.filter((item) => item.transition! >= 3);
   const combined = borrowers.filter((item) => item.overall !== null);
   const highCombined = combined.filter((item) => item.overall! >= 3);
-  const verifiedSites = borrowers.filter((item) => item.fullyLocated);
-  const highFacilities = facilities.filter((item) => item.physical >= HIGH_PHYSICAL_RISK);
-  const concentration = (key: (facility: typeof facilities[number]) => string) => {
-    const groups = new Map<string, number>();
-    for (const facility of highFacilities) {
-      const label = key(facility);
-      groups.set(label, (groups.get(label) ?? 0) + facility.loan.ead);
-    }
-    return [...groups].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
-  };
-  const regional = concentration((facility) => facility.sites.reduce((a, b) => b.score > a.score ? b : a).region);
-  const sector = concentration((facility) => sectorOf(facility.loan.sector).name);
-  const share = (amount: number) => pct(ead ? amount / ead : 0);
+  const portfolioRows = facilities.map(({ loan, sites, physical }) => {
+    const site = sites.reduce((highest, candidate) => candidate.score > highest.score ? candidate : highest);
+    const driver = site.hazards[0];
+    return {
+      id: loan.id, borrower: loan.borrower, borrowerId: loan.borrowerId ? `borrower:${loan.borrowerId}` : `facility:${loan.id}`,
+      region: site.region, sector: sectorOf(loan.sector).name, driver: driver.impact > 0 ? driver.hazard[0].toUpperCase() + driver.hazard.slice(1) : 'None modelled',
+      ead: loan.ead, score: physical, verified: sites.every((location) => !!location.reference),
+    };
+  });
 
   return (
     <>
       <PageHead area="Engine II · Physical risk & GIS" title="Borrower climate risk" intro="Review facility and collateral exposure, the approved Engine I transition assessment, and borrower-specific remediation. Portfolio views use the active loan book.">
         <a href="#engine-ii-methodology" className="text-sm font-medium text-lime-900 underline">Score methodology</a>
       </PageHead>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Portfolio exposure" value={ghs(ead)} sub={`${facilities.length.toLocaleString('en-GB')} facilities`} />
-        <Stat label="High physical risk exposure" value={share(highEad)} sub={`${ghs(highEad)} across borrower groups scoring ≥ 3.0`} tone="warn" />
-        <Stat label="Verified location coverage" value={share(sumExposure(verifiedSites))} sub="Borrower exposure with every applicable site referenced" />
-        <Stat label="Approved transition coverage" value={share(sumExposure(approvedTransition))} sub="Borrower exposure with verified scores for every facility" />
-      </div>
+      <PhysicalPortfolioDashboard rows={portfolioRows} />
 
       <section id="borrower-risk" className="mt-6 scroll-mt-4">
         <Card title="Borrower risk profile">
@@ -111,27 +101,12 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
         ])} /> : <p className="text-sm text-zinc-600">The current assessment identified no material drivers or evidence gaps for this shortlist.</p>}
       </Card>}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card title="High physical risk exposure by region" note="Region of each facility’s highest-scoring site">
-          {regional.length ? <Bars rows={regional} format={(amount) => ghs(amount)} color="bg-orange-600" /> : <p className="text-sm text-zinc-600">No facilities meet the high-risk threshold.</p>}
-        </Card>
-        <Card title="High physical risk exposure by sector" note="Facility physical score ≥ 3.0">
-          {sector.length ? <Bars rows={sector} format={(amount) => ghs(amount)} color="bg-orange-600" /> : <p className="text-sm text-zinc-600">No facilities meet the high-risk threshold.</p>}
-        </Card>
-      </div>
       <Card title="Portfolio climate risk coverage" className="mt-6" note="High risk threshold ≥ 3.0 / 5">
         <Table head={['Component', 'Exposure with a score', 'High risk exposure', 'Pending exposure']} rows={[
           ['Physical (includes location proxies)', ghs(ead), ghs(highEad), ghs(0)],
           ['Approved transition', ghs(sumExposure(approvedTransition)), ghs(sumExposure(highTransition)), ghs(ead - sumExposure(approvedTransition))],
           ['Overall climate risk', ghs(sumExposure(combined)), ghs(sumExposure(highCombined)), ghs(ead - sumExposure(combined))],
         ]} />
-      </Card>
-
-      <Card title="Largest borrower physical risk concentrations" className="mt-6" note="Ranked by physical risk score">
-        <Table head={['Borrower', 'Outstanding', 'Physical', 'Approved transition', 'Overall']} rows={borrowers.slice(0, 12).map((item) => [
-          <Link key="borrower" href={profileHref(item.id)} className="font-medium underline">{item.name} · {item.facilities[0].loan.id}</Link>,
-          ghs(item.ead), scoreLabel(item.physical), scoreLabel(item.transition), scoreLabel(item.overall),
-        ])} />
       </Card>
 
       <Card title="Facility and collateral hazard map" className="mt-6">
@@ -156,7 +131,7 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
           item.hazard, item.label, `${item.base.toFixed(1)} ${item.unit}`, `${item.future.toFixed(1)} ${item.unit}`, (1 + item.change).toFixed(3),
         ])} />
         <p className="mt-3 text-sm text-zinc-600">Engine II follows the IPCC risk framework by combining hazard, exposure and vulnerability. The demo uses facility outstanding exposure (EAD) or pledged collateral value as a financial proxy for what is exposed at the mapped site. The exposure factor is the site amount divided by {ghs(SITE_EXPOSURE_REFERENCE)}, capped at 1. The reference and weights are illustrative model choices. <a className="underline" href="https://www.ipcc.ch/report/ar6/wg2/chapter/annex-ii/">IPCC AR6 WGII glossary</a></p>
-        <p className="mt-3 text-sm text-zinc-600">Each hazard contribution multiplies the three inputs. The site score weights the largest contribution at 70% and the average at 30%, then scales the result to 1–5. The highest applicable site score drives the borrower profile. Concentration tables count each qualifying facility’s outstanding exposure once. The remediation shortlist uses contributions of {MATERIAL_HAZARD.toFixed(2)} or higher.</p>
+        <p className="mt-3 text-sm text-zinc-600">Each hazard contribution multiplies the three inputs. The site score weights the largest contribution at 70% and the average at 30%, then scales the result to 1–5. The highest applicable site score drives the borrower profile. The portfolio score is the sum of each facility’s physical score multiplied by its outstanding exposure, divided by total outstanding exposure in the selected view. Portfolio risk bands and concentrations count each facility’s exposure once. The remediation shortlist uses contributions of {MATERIAL_HAZARD.toFixed(2)} or higher.</p>
         <dl className="mt-3 space-y-2">
           <div><dt className="inline font-semibold">Hazard intensity </dt><dd className="inline">The illustrative regional baseline from the model’s Ghana region table is multiplied by the CCKP ratio (2045–2054 mean ÷ 2015–2024 mean, SSP5-8.5), then capped at 1. Coastal hazard uses the regional baseline with a multiplier of 1.</dd></div>
           <div><dt className="inline font-semibold">Exposure </dt><dd className="inline">Facility EAD and pledged collateral value come from the active loan extract ({dataset.id}). They are scaled separately against the demo reference.</dd></div>
