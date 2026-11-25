@@ -8,6 +8,7 @@ import type { ScreenRunRecord } from './store';
 
 export const HIGH_PHYSICAL_RISK = 3;
 export const MATERIAL_HAZARD = 0.4;
+export const SITE_EXPOSURE_REFERENCE = 100_000_000;
 
 export const hazardEvidence = [
   { hazard: 'flood', label: 'Maximum 5-day rainfall', unit: 'mm', ...hazardChange('rx5day', SSP_FOR.current, 2050) },
@@ -31,14 +32,16 @@ export function climateAggregationPolicy() {
 function assessSite(loan: Loan, kind: 'Facility' | 'Collateral', verifiedSite?: VerifiedSite) {
   const region = REGIONS.find((item) => item.name === (verifiedSite?.region ?? loan.region))!;
   const vulnerability = kind === 'Facility' ? sectorOf(loan.sector).vuln : COLLATERAL[loan.collateralType].vuln;
+  const exposureAmount = kind === 'Facility' ? loan.ead : loan.collateralValue;
+  const exposure = clamp(exposureAmount / SITE_EXPOSURE_REFERENCE);
   const hazards = HAZARDS.map((hazard) => {
     const signal = hazardEvidence.find((item) => item.hazard === hazard);
     const intensity = clamp(region.hazard[hazard] * (signal ? 1 + signal.change : 1));
-    return { hazard, intensity, vulnerability: vulnerability[hazard], impact: intensity * vulnerability[hazard] };
+    return { hazard, intensity, vulnerability: vulnerability[hazard], impact: intensity * exposure * vulnerability[hazard] };
   }).sort((a, b) => b.impact - a.impact);
   const score = 1 + 4 * (0.7 * hazards[0].impact + 0.3 * hazards.reduce((sum, item) => sum + item.impact, 0) / hazards.length);
   return {
-    kind, score, hazards, region: region.name,
+    kind, score, hazards, exposureAmount, exposure, region: region.name,
     lat: verifiedSite?.lat ?? loan.lat, lon: verifiedSite?.lon ?? loan.lon,
     reference: verifiedSite?.reference, quality: verifiedSite ? 'Verified in loan extract' : `Legacy ${loan.geoConfidence || 'location'} proxy`,
   };
@@ -70,7 +73,7 @@ export function assessPortfolio(loans: Loan[], runs: ScreenRunRecord[], datasetI
         overall: policy && fullyLocated && transition !== null ? policy.combine(physical, transition) : null,
         ead: sites.reduce((total, site) => total + site.loan.ead, 0),
       };
-    }).sort((a, b) => b.physical * b.ead - a.physical * a.ead),
+    }).sort((a, b) => b.physical - a.physical || b.ead - a.ead),
   };
 }
 
@@ -100,7 +103,7 @@ export function remediationShortlist(profile: Profile) {
     const physical = sites.flatMap((site) => site.hazards.filter(({ impact }) => impact >= MATERIAL_HAZARD).map(({ hazard, impact }) => ({
       priority: impact, driver: `${hazard} · ${site.kind.toLowerCase()}`, facility: loan.id,
       owner: site.kind === 'Collateral' ? 'Collateral owner with relationship manager' : 'Borrower operations with relationship manager',
-      evidence: `${site.region} hazard proxy × site vulnerability${site.reference ? ` · ${site.reference}` : ''}`,
+      evidence: `${site.region} hazard proxy × ${site.kind.toLowerCase()} exposure factor ${site.exposure.toFixed(3)} × site vulnerability${site.reference ? ` · ${site.reference}` : ''}`,
       ...physicalActions[hazard],
     })));
     const transitionActions = [];

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { activeLoans, screenRuns } from '@/lib/store';
 import { REGIONS, sectorOf } from '@/lib/params';
-import { assessPortfolio, hazardEvidence, hazardSource, HIGH_PHYSICAL_RISK, MATERIAL_HAZARD, remediationShortlist } from '@/lib/physical-risk';
+import { assessPortfolio, hazardEvidence, hazardSource, HIGH_PHYSICAL_RISK, MATERIAL_HAZARD, remediationShortlist, SITE_EXPOSURE_REFERENCE } from '@/lib/physical-risk';
 import { Bars, Card, PageHead, Stat, Table } from '@/components/ui';
 import { RiskMap } from '@/components/risk-map-lazy';
 import { BorrowerSelector } from '@/components/borrower-selector';
@@ -87,10 +87,12 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
                     : <Link key="source" href={{ pathname: '/screening', query: { facility: facility.loan.id } }} className="underline">Open Engine I questionnaire</Link>,
               ])} />
               <div className="mt-4">
-                <Table head={['Facility and site', 'Region and coordinates', 'Location evidence', 'Site score', 'Modelled hazard × vulnerability']} rows={selected.facilities.flatMap((facility) => facility.sites.map((site) => [
+                <Table head={['Facility and site', 'Region and coordinates', 'Location evidence', 'Financial exposure', 'Site score', 'Hazard × exposure × vulnerability']} rows={selected.facilities.flatMap((facility) => facility.sites.map((site) => [
                   `${facility.loan.id} · ${site.kind}`, `${site.region} · ${site.lat.toFixed(4)}, ${site.lon.toFixed(4)}`,
-                  site.reference ?? site.quality, scoreLabel(site.score),
-                  <ul key="hazards" className="whitespace-nowrap">{site.hazards.map((item) => <li key={item.hazard} className="capitalize">{item.hazard} · {item.intensity.toFixed(2)} × {item.vulnerability.toFixed(2)} = {item.impact.toFixed(2)}</li>)}</ul>,
+                  site.reference ?? site.quality,
+                  <div key="exposure" className="whitespace-nowrap">{ghs(site.exposureAmount)} {site.kind === 'Facility' ? 'EAD' : 'collateral'}<p className="text-xs text-zinc-600">Exposure factor {site.exposure.toFixed(3)}</p></div>,
+                  scoreLabel(site.score),
+                  <ul key="hazards" className="whitespace-nowrap">{site.hazards.map((item) => <li key={item.hazard} className="capitalize">{item.hazard} · {item.intensity.toFixed(3)} × {site.exposure.toFixed(3)} × {item.vulnerability.toFixed(3)} ≈ {item.impact.toFixed(3)}</li>)}</ul>,
                 ]))} />
               </div>
             </>
@@ -122,7 +124,7 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
         ]} />
       </Card>
 
-      <Card title="Largest borrower physical risk concentrations" className="mt-6" note="Ranked by exposure × physical score">
+      <Card title="Largest borrower physical risk concentrations" className="mt-6" note="Ranked by physical risk score">
         <Table head={['Borrower', 'Outstanding', 'Physical', 'Approved transition', 'Overall']} rows={borrowers.slice(0, 12).map((item) => [
           <Link key="borrower" href={profileHref(item.id)} className="font-medium underline">{item.name} · {item.facilities[0].loan.id}</Link>,
           ghs(item.ead), scoreLabel(item.physical), scoreLabel(item.transition), scoreLabel(item.overall),
@@ -132,7 +134,7 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
       <Card title="Facility and collateral hazard map" className="mt-6">
         <RiskMap
           points={facilities.flatMap(({ loan, sites }) => sites.map((site) => ({ id: `${loan.id} · ${site.kind}`, borrower: loan.borrower,
-            lat: site.lat, lon: site.lon, ead: site.kind === 'Collateral' ? loan.collateralValue : loan.ead, score: (site.score - 1) / 4,
+            lat: site.lat, lon: site.lon, ead: site.exposureAmount, score: (site.score - 1) / 4,
             haz: Object.fromEntries(site.hazards.map((hazard) => [hazard.hazard, hazard.intensity])), geo: site.reference ? 'verified' : site.quality,
           })))}
           regions={REGIONS.map((region) => ({ name: region.name, lat: region.lat, lon: region.lon,
@@ -146,7 +148,8 @@ export default async function PhysicalPage({ searchParams }: { searchParams: Pro
         <Table head={['Risk driver', 'Modelled indicator', '2015–2024', '2045–2054']} rows={hazardEvidence.map((item) => [
           item.hazard, item.label, `${item.base.toFixed(1)} ${item.unit}`, `${item.future.toFixed(1)} ${item.unit}`,
         ])} />
-        <p className="mt-3 text-sm text-zinc-600">Site scores weight the largest hazard × vulnerability result at 70% and the mean at 30%, converted to a 1–5 scale. Regional and sector concentration tables count each high-risk facility’s outstanding exposure once. The remediation shortlist considers site hazard × vulnerability values of {MATERIAL_HAZARD.toFixed(2)} or higher.</p>
+        <p className="mt-3 text-sm text-zinc-600">Engine II follows the IPCC risk framework by combining hazard, exposure and vulnerability. The demo uses facility outstanding exposure (EAD) or pledged collateral value as a financial proxy for what is exposed at the mapped site. The exposure factor is the site amount divided by {ghs(SITE_EXPOSURE_REFERENCE)}, capped at 1. The reference and weights are illustrative model choices. <a className="underline" href="https://www.ipcc.ch/report/ar6/wg2/chapter/annex-ii/">IPCC AR6 WGII glossary</a></p>
+        <p className="mt-3 text-sm text-zinc-600">Each hazard contribution multiplies the three inputs. The site score weights the largest contribution at 70% and the average at 30%, then scales the result to 1–5. The highest applicable site score drives the borrower profile. Concentration tables count each qualifying facility’s outstanding exposure once. The remediation shortlist uses contributions of {MATERIAL_HAZARD.toFixed(2)} or higher.</p>
       </Card>
     </>
   );
