@@ -17,6 +17,7 @@ export default async function ScenarioBatchPage({ params }: { params: Promise<{ 
     <>
       <PageHead area="Engine III · Multi-year assessment" title={`${pathway.name} · reporting years`}
         intro={`${records.map((rec) => rec.input.horizon).join(', ')} · ${first.input.approach} · ${first.datasetId} · Run by ${first.by} on ${when(first.createdAt)}`}>
+        <Link href={`/reports?batch=${id}`} className="rounded-md bg-lime-200 px-3 py-2 text-sm font-semibold">Regulatory pack</Link>
         <a href={`/api/runs/batch/${id}`} className="rounded-md bg-lime-200 px-3 py-2 text-sm font-semibold">Download audit CSV</a>
         <Link href="/stress" className="text-sm underline">Scenario analysis</Link>
       </PageHead>

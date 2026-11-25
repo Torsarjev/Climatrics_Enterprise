@@ -5,6 +5,7 @@ body {
 }
 
 @media print {
-  header, nav, .no-print { display: none !important; }
+  header, nav, aside, .no-print { display: none !important; }
   body { background: #fff; }
+  tr { break-inside: avoid; }
 }

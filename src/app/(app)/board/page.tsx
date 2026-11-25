@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { activeLoans, screenRuns } from '@/lib/store';
+import { activeLoans, db, screenRuns } from '@/lib/store';
+import { MultiYearReport } from '@/components/multi-year-report';
+import { latestByPathway, reportingBatches } from '@/lib/reporting-batches';
 import { boardView } from '@/lib/board';
 import { ghs } from '@/lib/fmt';
 import { Badge, Card, Illustrative, PageHead, Stat, Table } from '@/components/ui';
@@ -12,13 +14,14 @@ const day = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'numer
 
 export default async function BoardPage() {
   const { dataset, loans } = await activeLoans();
+  const batches = latestByPathway(reportingBatches((await db()).runs).filter((batch) => batch.first.datasetId === dataset.id));
   const v = await boardView(loans, await screenRuns(), dataset.id);
   const count = (s: keyof typeof LABEL) => v.limits.filter((l) => l.status === s).length;
   const refreshed = new Date(v.asOf).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 
   return (
     <>
-      <PageHead area="Engine VI · Board & management" title="Board & management dashboard" intro={`Climate risk appetite, key risk indicators, targets and the management actions that follow from them. Every value is recomputed from the active dataset (${dataset.name}) and approved screenings when the page loads.`}>
+      <PageHead area="Engine VI · Board & management" title="Board & management dashboard" intro={`Climate risk appetite, key risk indicators, targets and the management actions that follow from them. Risk indicators use the active dataset (${dataset.name}). Scenario results come from saved runs.`}>
         <span className="text-xs text-zinc-500">Refreshed {refreshed} · <Link href="/api/board" className="underline">JSON</Link></span>
       </PageHead>
 
@@ -28,6 +31,10 @@ export default async function BoardPage() {
         <Stat label="Within appetite" value={String(count('within'))} sub="no action needed" tone="good" />
         <Stat label="Open management actions" value={String(v.actions.length)} sub={`${v.actions.filter((a) => a.overdue).length} overdue`} />
       </div>
+
+      <Card title="Multi-year climate scenario results" className="mt-6" note={<Link href="/reports?audience=board" className="underline">Open Board climate risk pack</Link>}>
+        {batches.length ? <MultiYearReport batches={batches} board /> : <p className="text-sm text-zinc-600">No multi-year scenarios are saved for the active loan book. <Link href="/stress" className="underline">Scenario analysis</Link></p>}
+      </Card>
 
       <Card title="Climate risk appetite" note="limits set by the Board Risk Committee · illustrative values" className="mt-6">
         <Table head={['ID', 'Metric', 'Current', 'Limit', 'Amber trigger', 'Status', 'Owner']} align={['l', 'l', 'r', 'r', 'r', 'l', 'l']} rows={v.limits.map((l) => [
