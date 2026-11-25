@@ -3,6 +3,7 @@ import { db, getRun } from '@/lib/store';
 import { scenarioOf } from '@/lib/params';
 import { Card, Illustrative, PageHead, Table } from '@/components/ui';
 import { EvidenceCards } from '@/components/evidence-cards';
+import { RunApproval } from '@/components/run-approval';
 import { ghs, pct, pp } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,7 @@ export default async function LiquidityPage({ searchParams }: { searchParams: Pr
   const { runs } = await db();
   const id = runId ?? runs.find((run) => run.status === 'approved')?.id ?? runs[0]?.id;
   const found = id ? await getRun(id) : null;
-  if (!found) return <><PageHead area="ILAAP" title="Liquidity adequacy" /><p className="text-sm">No scenario run is available. <Link href="/stress" className="underline">Open scenario analysis</Link>.</p></>;
+  if (!found) return <><PageHead area="Climate ILAAP" title="Liquidity adequacy" /><p className="text-sm">No scenario run is available. <Link href="/stress" className="underline">Open scenario analysis</Link>.</p></>;
   const { run, rec } = found;
   const liquidity = run.liquidity;
 
@@ -22,9 +23,10 @@ export default async function LiquidityPage({ searchParams }: { searchParams: Pr
   const source = <Link href={`/runs/${rec.id}`} className="underline">Open source run {rec.id}</Link>;
 
   return <>
-    <PageHead area="ILAAP" title="Liquidity adequacy" intro={`Liquidity assessment using ${rec.id}: ${scenarioOf(rec.input.scenario).name}, ${rec.input.horizon}.`}>
+    <PageHead area="Climate ILAAP" title="Liquidity adequacy" intro={`Liquidity assessment using ${rec.id}: ${scenarioOf(rec.input.scenario).name}, ${rec.input.horizon}.`}>
       <Link href={`/runs/${rec.id}`} className="text-sm underline">Source scenario run</Link>
     </PageHead>
+    <RunApproval rec={rec} figures="liquidity" />
     <EvidenceCards key={rec.id} label="Liquidity metrics" items={[
       { id: 'lcr', label: 'Liquidity coverage ratio', value: `${pct(liquidity.lcrBefore)} → ${pct(liquidity.lcrAfter)}`, sub: pp(liquidity.lcrAfter - liquidity.lcrBefore),
         evidence: <><p>High-quality liquid assets ÷ net cash outflows. The model uses the same eligible inflows in both calculations, caps the deduction at 75% of gross outflows, and floors net outflows at GHS 1.</p>
