@@ -70,7 +70,7 @@ export default async function ScreenRunPage({ params }: { params: Promise<{ id: 
           <ul className="mt-1 list-disc space-y-1 pl-4 text-sm">{R.esms.actions.length ? R.esms.actions.map((a) => <li key={a}>{a}</li>) : <li>None</li>}</ul>
         </Card>
         <Card title="Ghana NDC" note={rec.versions.NDC}>
-          <ul className="space-y-2 text-sm">{R.ndc.map((n) => <li key={n.activityId}><b>{ghs(n.amount)}</b> {actName(n.code)}<br /><span className={n.programmes.length ? 'text-emerald-700' : 'text-zinc-500'}>{n.programmes.length ? `${n.programmes.map((p) => `${p.programme} (${p.objective})`).join('; ')}: ${n.status}` : 'No match'}</span></li>)}</ul>
+          <ul className="space-y-2 text-sm">{R.ndc.map((n) => <li key={n.activityId}><b>{ghs(n.amount)}</b> {actName(n.code)}<br /><span className={n.programmes.length ? 'text-emerald-700' : 'text-zinc-500'}>{n.programmes.length ? `${n.programmes.map((p) => `${p.programme} (${p.objective})`).join('; ')}: ${n.status}` : 'Not aligned'}</span></li>)}</ul>
         </Card>
         <Card title="Green Taxonomy" note={rec.versions.TAXONOMY}>
           <ul className="space-y-2 text-sm">{R.taxonomy.map((t) => <li key={t.activityId}><b>{ghs(t.amount)}</b> {actName(t.code)}<br /><Badge tone={TAX_TONE[t.status]}>{t.status === 'aligned' && !approved ? 'aligned · awaiting approval' : t.status}</Badge></li>)}</ul>

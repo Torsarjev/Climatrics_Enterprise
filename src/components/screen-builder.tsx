@@ -123,7 +123,7 @@ export function ScreenBuilder({ facilities, initialId, previous }: { facilities:
         <p className={`mt-2 inline-block rounded px-2 py-1 text-sm font-medium ring-1 ${TONE[preview.decision.tone]}`}>{preview.decision.label}</p>
         <div className="mt-2 grid gap-2 text-sm md:grid-cols-4">
           <p><b>ESMS:</b> gate {preview.esms.gate} · risk {preview.esms.tier}</p>
-          <p><b>NDC:</b> {preview.ndc.filter((n) => n.programmes.length).map((n) => `${n.code} ${n.status}`).join('; ') || 'no match'}</p>
+          <p><b>NDC:</b> {preview.ndc.filter((n) => n.programmes.length).map((n) => `${n.code} ${n.status}`).join('; ') || 'not aligned'}</p>
           <p><b>Taxonomy:</b> {preview.taxonomy.map((t) => `${m(t.amount)} ${t.status}`).join('; ')}</p>
           <p><b>SDG:</b> {[...new Set(preview.sdg.contributions.flatMap((c) => c.targets))].join(', ') || 'none'}{preview.sdg.adverse.length ? ` · adverse ${preview.sdg.adverse.map((a) => a.target).join(', ')}` : ''}</p>
         </div>

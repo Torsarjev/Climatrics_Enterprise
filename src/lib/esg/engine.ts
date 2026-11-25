@@ -134,7 +134,7 @@ export function screen(input: ScreenInput) {
   const evOk = (a: Activity) => { const e = ACTIVITIES[a.code]?.evidence; return !!e && input.evidence[criterionEvidenceId(input, e, a)]?.status === 'verified'; };
   const ndc = input.activities.map((a) => {
     const m = [...new Set(of('NDC', a.id).filter((r) => r.outcome === 'pass').map((r) => r.id))].map(crit);
-    return { activityId: a.id, code: a.code, amount: a.amount, programmes: m.map((c) => ({ id: c.id, programme: c.programme!, objective: c.objective! })), status: !m.length ? 'no match' : evOk(a) ? 'verified contribution' : 'potential contribution' };
+    return { activityId: a.id, code: a.code, amount: a.amount, programmes: m.map((c) => ({ id: c.id, programme: c.programme!, objective: c.objective! })), status: !m.length ? 'not aligned' : evOk(a) ? 'verified contribution' : 'potential contribution' };
   });
   const taxonomy = input.activities.map((a) => {
     const rs = of('TAXONOMY', a.id).filter((r) => r.outcome !== 'na');
