@@ -126,7 +126,7 @@ export const DEMO_TREASURY: TreasuryInputs = {
   ],
   deposits: [
     { segment: 'Retail', balance: 4500e6, day: 30, runoffPct: 5, gdpSensitivity: 0.4, inflationSensitivity: 0.2 },
-    { segment: 'Commercial', balance: 3500e6, day: 7, runoffPct: 10, gdpSensitivity: 0.8, inflationSensitivity: 0.35 },
+    { segment: 'Corporate', balance: 3500e6, day: 7, runoffPct: 10, gdpSensitivity: 0.8, inflationSensitivity: 0.35 },
   ],
   flows: ILAAP_BUCKETS.map((day, index) => ({ day, contractualIn: [250, 350, 350, 400, 450][index] * 1e6,
     contractualOut: [300, 500, 550, 700, 800][index] * 1e6, fundingMaturing: [300, 500, 700, 900, 1100][index] * 1e6, rolloverPct: 75 })),
