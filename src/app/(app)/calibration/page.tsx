@@ -38,6 +38,7 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
     ['GDP', fits?.gdp.fit ?? wdiRegression('gdp', settings.start, settings.end).fit],
     ['Inflation', fits?.inflation.fit ?? wdiRegression('inflation', settings.start, settings.end).fit],
     ['Long-term rate', execution?.rateEvidence?.fit],
+    ['Energy price', execution?.energyEvidence?.fit],
   ] as const : undefined;
   return (
     <>
@@ -65,22 +66,31 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
         <details className="my-3 text-sm">
           <summary className="cursor-pointer font-medium">Compare scenario inputs with the active calibration at execution</summary>
           <Table head={['Year', 'Input', 'Active', 'Candidate']} rows={execution.preview.filter((row) => row.scenario === key && row.approach === 'top-down').flatMap((row) =>
-            (['gdp', 'inflation', 'rate', 'carbon', 'flood', 'physical'] as const).map((v) =>
-              [row.year, VARIABLES[v].label, fmt(row.activeShocks[v], VARIABLES[v].unit), fmt(row.candidateShocks[v], VARIABLES[v].unit)]))} />
+            [
+              ...(['gdp', 'inflation', 'rate', 'carbon', 'flood', 'physical'] as const).map((v) =>
+                [row.year, VARIABLES[v].label, fmt(row.activeShocks[v], VARIABLES[v].unit), fmt(row.candidateShocks[v], VARIABLES[v].unit)]),
+              [row.year, 'Energy price', row.activeShocks.energy ? fmt(row.activeShocks.energy.ghana, '%') : 'Unavailable', row.candidateShocks.energy ? fmt(row.candidateShocks.energy.ghana, '%') : 'Unavailable'],
+            ])} />
         </details>
         {!saved && mayRun && !execution.decision && <CalibrationDecision id={execution.profile.id} stale={active.id !== execution.comparison.id || data.activeDataset !== execution.dataset.id} />}
       </Card>}
 
       {regression && <Card title="Regression coefficients" className="mb-6">
-        <Table head={['Variable', 'Applied coefficient', 'OLS intercept (pp)', 'R²', 'Slope std. error', 'Annual changes']}
+        <Table head={['Variable', 'Applied coefficient', 'OLS intercept', 'R²', 'Slope std. error', 'Annual changes']}
           rows={regression.map(([label, fit], index) => {
-            const coefficient = profile!.coefficients[(['gdp', 'inflation', 'rate'] as const)[index]];
-            return [label, fit ? coefficient.toFixed(4) : profile!.rateBasis === 'regional' ? '1.0000 · regional' : coefficient.toFixed(4),
+            const coefficient = index === 3 ? profile?.energy?.beta : profile?.coefficients[(['gdp', 'inflation', 'rate'] as const)[index]];
+            if (coefficient === undefined) return [label, 'Data unavailable', '—', '—', '—', '—'];
+            return [label, fit ? coefficient.toFixed(4) : profile?.rateBasis === 'regional' ? '1.0000 · regional' : coefficient.toFixed(4),
               fit?.alpha.toFixed(4) ?? '—', fit?.r2?.toFixed(3) ?? '—', fit?.standardError.toFixed(4) ?? '—', fit?.n ?? '—'];
           })} />
         {execution?.rateEvidence && <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">View matched rate observations</summary>
           <p className="my-2">{execution.rateEvidence.source}</p>
           <Table head={['Year', 'Ghana (%)', 'Regional (%)']} rows={execution.rateEvidence.sample.map(({year, ghana, regional}) => [year, ghana, regional])} />
+        </details>}
+        {execution?.energyEvidence && profile?.energy && <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">View matched energy observations and stress assumptions</summary>
+          <p className="my-2">{execution.energyEvidence.source}</p>
+          <p className="my-2">NGFS path · {profile.energy.source} · Energy-exposed operating costs {(profile.energy.opexShare * 100).toFixed(1)}%</p>
+          <Table head={['Year', 'Ghana price index', 'Regional price index']} rows={execution.energyEvidence.sample.map(({year, ghana, regional}) => [year, ghana, regional])} />
         </details>}
       </Card>}
 
@@ -94,7 +104,7 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
 
       <Card title="Method">
         <p className="rounded-md bg-zinc-50 px-3 py-2 font-mono text-sm">Calibrated Ghana shock = NGFS regional shock × Ghana sensitivity coefficient</p>
-        <p className="mt-3 text-sm text-zinc-700">{isRegression ? <>For GDP and inflation, ordinary least squares estimates the slope of Ghana’s annual changes on Sub-Saharan Africa’s annual changes. A rate upload uses the same method on matched long-term yields. Only the fitted slope scales the NGFS shock, so a zero regional shock stays zero. The intercept, R² and standard error describe the historical fit. A signed slope can reverse a shock, so review the preview and fit before activating. Ghana’s historical co-movement is an empirical proxy for scenario transmission.</> : <>For GDP and inflation the coefficient is <b>σ(year-on-year change in Ghana) ÷ σ(year-on-year change in Sub-Saharan Africa)</b>, estimated on World Bank data for {ev[0].from}–{ev[0].to}. The ratio scales the magnitude of the regional shocks and preserves their sign. The regression slope and R² are diagnostics.</>} GDP uses the change in the interpolated deviation over up to five years, with 2025 as the earliest starting point. Other macro and carbon values use the selected reporting year.</p>
+        <p className="mt-3 text-sm text-zinc-700">{isRegression ? <>For GDP and inflation, ordinary least squares estimates the slope of Ghana’s annual changes on Sub-Saharan Africa’s annual changes. A rate upload uses the same method on matched long-term yields. Energy regression uses annual log price changes. The slope scales the log of the NGFS price ratio, which is converted back to a percentage deviation. Only the fitted slope scales the NGFS shock, so a zero regional shock stays zero. The intercept, R² and standard error describe the historical fit. A signed slope can reverse a shock, so review the preview and fit before activating. Ghana’s historical co-movement is an empirical proxy for scenario transmission.</> : <>For GDP and inflation the coefficient is <b>σ(year-on-year change in Ghana) ÷ σ(year-on-year change in Sub-Saharan Africa)</b>, estimated on World Bank data for {ev[0].from}–{ev[0].to}. The ratio scales the magnitude of the regional shocks and preserves their sign. The regression slope and R² are diagnostics.</>} GDP uses the change in the interpolated deviation over up to five years, with 2025 as the earliest starting point. Other macro and carbon values use the selected reporting year.</p>
         <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm md:grid-cols-3">
           <div><dt className="text-zinc-500">NGFS release</dt><dd>{NGFS_RELEASE}</dd></div>
           <div><dt className="text-zinc-500">Region</dt><dd>{NGFS_REGION}</dd></div>
@@ -149,7 +159,7 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
         <p className="text-sm text-zinc-700">The evidence download contains the annual Ghana and Sub-Saharan Africa WDI series, the NGFS observation grids, the Ghana CCKP projections, the underlying workbook names and fingerprints, settings, coefficient diagnostics and calibrated outputs.</p>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-zinc-700">
           <li>NiGEM Africa and GCAM Western Africa are regional pathways. Local GDP and inflation sensitivities depend on the chosen historical sample and can reflect shocks unrelated to climate. Interpolation smooths risks between NGFS observations. <a href="https://www.ngfs.net/ngfs-scenarios-portal/" className="underline">NGFS Scenarios Portal</a></li>
-          <li>Rate regression depends on the supplied benchmark and yield comparability. Historical co-movement does not establish causality. Low fit, structural breaks and a short sample can make estimates unstable. A regional rate input without a fitted slope is provisional. The carbon price uses the regional scenario value in 2010 US dollars per tonne for new calibrations.</li>
+          <li>Rate regression depends on the supplied benchmark and yield comparability. Historical co-movement does not establish causality. Low fit, structural breaks and a short sample can make estimates unstable. A regional rate input without a fitted slope is provisional. For supplied energy paths, bottom-up applies the local energy shock to the selected operating-cost share and CPI to the remainder. Top-down weights energy and CPI by those shares using the existing cost sensitivity. The expense share and transmission require validation. The carbon price uses the regional scenario value in 2010 US dollars per tonne for new calibrations.</li>
           <li>Ghana CCKP uses national CMIP6 ensemble medians. Net Zero 2050 and Delayed Transition use SSP2-4.5, while Current Policies uses SSP5-8.5. These are modelling proxies. Physical multipliers compare the ten years centred on the reporting year with 2015–2024 in the same series. The composite equally weights relative changes in rainfall, hot days and dry spells. National projections can miss site-level extremes. <a href="https://climateknowledgeportal.worldbank.org/country/ghana" className="underline">World Bank Ghana climate data</a></li>
           <li>The stress engine also uses a separate modelled transition policy index, provided in the evidence download. Its assumptions, the calibration coefficients and their credit transmission require GCB validation. Results are conditional stress estimates for the selected loan book.</li>
         </ul>

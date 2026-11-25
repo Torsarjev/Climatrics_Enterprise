@@ -1,3 +1,4 @@
+import { calibratedEnergy, type EnergyCalibration } from './calibration-energy';
 import { regressChanges } from './calibration-regression';
 import { WORLD_BANK } from '@/data/worldbank';
 import { NGFS } from '@/data/ngfs';
@@ -21,6 +22,7 @@ export type CalibrationSettings = typeof DEFAULT_CALIBRATION;
 export interface CalibrationProfile {
   id: string;
   method?: typeof REGRESSION_VERSION | typeof BASELINE_VERSION;
+  energy?: EnergyCalibration;
   rateBasis?: 'regression' | 'regional';
   settings: CalibrationSettings;
   coefficients: Record<'gdp' | 'inflation' | 'rate' | 'carbon', number>;
@@ -150,24 +152,36 @@ export function calibrate(key: ScenarioKey, year: number, v: Variable, profile?:
   return { regional: r.value, source: r.source, coefficient: c, ghana };
 }
 
-export interface GhanaShocks { gdp: number; inflation: number; rate: number; carbon: number; flood: number; physical: number; transition: number }
+export interface GhanaShocks { gdp: number; inflation: number; rate: number; carbon: number; flood: number; physical: number; transition: number; energy?: ReturnType<typeof calibratedEnergy> }
 
 export function ghanaShocks(key: ScenarioKey, year: number, profile?: CalibrationProfile): GhanaShocks {
   const g = (v: Variable) => calibrate(key, year, v, profile).ghana;
-  return { gdp: g('gdp'), inflation: g('inflation'), rate: g('rate'), carbon: g('carbon'), flood: g('flood'), physical: g('physical'), transition: transitionAt(key, year) };
+  const energy = calibratedEnergy(profile?.energy, key, year);
+  return { ...(energy ? { energy } : {}), gdp: g('gdp'), inflation: g('inflation'), rate: g('rate'), carbon: g('carbon'), flood: g('flood'), physical: g('physical'), transition: transitionAt(key, year) };
 }
 
 export function calibrationRows(key?: ScenarioKey, profile?: CalibrationProfile) {
   const pathways = key
     ? [{ key, years: GCB_PATHWAYS.find((pathway) => pathway.key === key)?.years ?? HORIZONS }]
     : GCB_PATHWAYS;
-  return pathways.flatMap(({ key, years }) => years.flatMap((year) => (Object.keys(VARIABLES) as Variable[]).map((v) => {
-    const c = calibrate(key, year, v, profile);
-    return {
-      scenario: scenarioOf(key).name, scenarioKey: key, release: NGFS_RELEASE, region: NGFS_REGION, year, variable: VARIABLES[v].label, unit: VARIABLES[v].unit,
-      regional: c.regional, source: c.source, coefficient: c.coefficient, ghana: c.ghana, method: calibrationMethod(v, profile), status: profile?.method && v === 'rate' ? (profile.rateBasis === 'regional' ? 'Regional input · uncalibrated' : 'Regression · pending validation') : VARIABLES[v].status, version: profile?.id ?? CALIBRATION_VERSION,
-    };
-  })));
+  return pathways.flatMap(({ key, years }) => years.flatMap((year) => {
+    const base = (Object.keys(VARIABLES) as Variable[]).map((v) => {
+      const c = calibrate(key, year, v, profile);
+      return {
+        scenario: scenarioOf(key).name, scenarioKey: key, release: NGFS_RELEASE, region: NGFS_REGION, year, variable: VARIABLES[v].label, unit: VARIABLES[v].unit,
+        regional: c.regional, source: c.source, coefficient: c.coefficient, ghana: c.ghana, method: calibrationMethod(v, profile), status: profile?.method && v === 'rate' ? (profile.rateBasis === 'regional' ? 'Regional input · uncalibrated' : 'Regression · pending validation') : VARIABLES[v].status, version: profile?.id ?? CALIBRATION_VERSION,
+      };
+    });
+    const energy = calibratedEnergy(profile?.energy, key, year);
+    if (energy && profile?.energy) base.push({
+      scenario: scenarioOf(key).name, scenarioKey: key, release: 'See supplied energy series', region: 'See supplied energy series',
+      year, variable: 'Energy price', unit: '% vs scenario baseline', regional: energy.regional,
+      source: `Uploaded NGFS energy source · ${profile.energy.source}`, coefficient: profile.energy.beta, ghana: energy.ghana,
+      method: 'OLS slope of annual log price changes. Applied in log space to the regional percentage shock.',
+      status: 'Regression · pending validation', version: profile.id,
+    });
+    return base;
+  }));
 }
 
 export function calibrationMethod(v: Variable, profile?: CalibrationProfile) {

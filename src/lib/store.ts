@@ -12,7 +12,8 @@ import * as P from './params';
 import { sha256 } from './math';
 import { CALIBRATION_VERSION, REGRESSION_VERSION, activeCalibration, CalibrationProfile, calibrationEvidence, ghanaShocks, readRegressionWindow, wdiRegression } from './calibration';
 import { scenarioReporting } from './scenario-report';
-import { readRateEvidence } from './calibration-regression';
+import { readMatchedEvidence } from './calibration-regression';
+import { calibratedEnergy, readEnergyPath } from './calibration-energy';
 import { GCB_PATHWAYS, isGcbScenarioYear } from './gcb-scenarios';
 import { MAX_ECL_MATURITY, STAGED_ECL_MODEL } from './staged-ecl';
 import { onNetlify, readText, updateExistingBlob, writeText } from './kv';
@@ -62,7 +63,8 @@ export interface CalibrationExecution {
   dataset: { id: string; name: string; hash: string; facilities: number };
   modelFingerprint: string;
   evidence: ReturnType<typeof calibrationEvidence>;
-  rateEvidence?: ReturnType<typeof readRateEvidence>;
+  rateEvidence?: ReturnType<typeof readMatchedEvidence>;
+  energyEvidence?: ReturnType<typeof readMatchedEvidence>;
   preview: CalibrationPreviewRow[];
   decision?: { action: 'activate' | 'decline'; by: string; at: string; note: string };
 }
@@ -166,9 +168,27 @@ export async function executeCalibration(form: FormData) {
   const user = await currentUser();
   if (!user.can.includes('run' as never)) throw new Error('Your role cannot execute calibrations.');
   const { start, end } = readRegressionWindow(form);
-  const file = form.get('rates');
-  if (file instanceof File && file.size > 20000) throw new Error('Upload a rate CSV under 20 KB.');
-  const rateEvidence = readRateEvidence(file instanceof File ? await file.text() : '', String(form.get('rateSource') ?? ''), start, end);
+  const csv = async (key: string) => {
+    const file = form.get(key);
+    if (file instanceof File && file.size > 20000) throw new Error('Upload CSV files under 20 KB each.');
+    return file instanceof File ? file.text() : '';
+  };
+  const [rates, energyHistory, energyPath] = await Promise.all([csv('rates'), csv('energyHistory'), csv('energyPath')]);
+  const rateEvidence = readMatchedEvidence(rates, String(form.get('rateSource') ?? ''), start, end, 'rate');
+  const energyEvidence = readMatchedEvidence(energyHistory, String(form.get('energySource') ?? ''), start, end, 'energy');
+  const pathSource = String(form.get('energyPathSource') ?? '').trim();
+  const shareInput = String(form.get('energyShare') ?? '').trim();
+  if (Boolean(energyEvidence) !== Boolean(energyPath.trim()) || (!energyEvidence && (pathSource || shareInput))) {
+    throw new Error('Supply both matched historical energy prices and an NGFS energy path, or leave the energy fields empty.');
+  }
+  const share = Number(shareInput);
+  if (energyEvidence && (!shareInput || !Number.isFinite(share) || share < 0 || share > 100)) {
+    throw new Error('Enter the share of operating costs exposed to the energy price shock as a percentage from 0 to 100.');
+  }
+  const energy = energyEvidence ? { ...readEnergyPath(energyPath, pathSource), beta: energyEvidence.fit.beta, opexShare: share / 100 } : undefined;
+  if (energy && GCB_PATHWAYS.some(({key, years}) => years.some((year) => !Number.isFinite(calibratedEnergy(energy, key, year)?.ghana)))) {
+    throw new Error('The fitted energy sensitivity produces a non-finite scenario shock. Review the historical and scenario inputs.');
+  }
   const data = await db();
   const comparison = activeCalibration(data.calibration);
   const dataset = data.datasets.find((item) => item.id === data.activeDataset)!;
@@ -178,7 +198,7 @@ export async function executeCalibration(form: FormData) {
   const settings = { start, end, rate: rateEvidence?.fit.beta ?? 1, carbon: 1 };
   const profile: CalibrationProfile = {
     id: `GH-${randomUUID()}`, method: REGRESSION_VERSION, rateBasis: rateEvidence ? 'regression' : 'regional',
-    settings, coefficients: { gdp: wdiRegression('gdp', start, end).fit.beta, inflation: wdiRegression('inflation', start, end).fit.beta, rate: settings.rate, carbon: settings.carbon },
+    ...(energy ? { energy } : {}), settings, coefficients: { gdp: wdiRegression('gdp', start, end).fit.beta, inflation: wdiRegression('inflation', start, end).fit.beta, rate: settings.rate, carbon: settings.carbon },
     activatedBy: '', activatedAt: '',
   };
   const preview = GCB_PATHWAYS.flatMap(({ key: scenario, years }) => years.flatMap((year) =>
@@ -195,7 +215,7 @@ export async function executeCalibration(form: FormData) {
     profile, comparison, createdAt, createdBy: user.name,
     dataset: { id: dataset.id, name: dataset.name, hash: dataset.hash, facilities: loans.length },
     modelFingerprint: await runParamsHash({ scenario: 'current', horizon: 2050, approach: 'top-down', eclModel: STAGED_ECL_MODEL, calibration: profile }),
-    evidence: calibrationEvidence(profile), rateEvidence, preview,
+    evidence: calibrationEvidence(profile), rateEvidence, energyEvidence, preview,
   };
   await updateCalibrationStore((current) => ({
     ...current, calibrationExecutions: [execution, ...(current.calibrationExecutions ?? [])],
@@ -240,7 +260,7 @@ async function runParamsHash(input: RunInput) {
   const calibration = input.calibration;
   const profile = calibration?.method ? {
     id: calibration.id, method: calibration.method, rateBasis: calibration.rateBasis,
-    settings: calibration.settings, coefficients: calibration.coefficients,
+    settings: calibration.settings, coefficients: calibration.coefficients, energy: calibration.energy,
   } : calibration;
   return input.eclModel ? sha256(JSON.stringify({ base, eclModel: input.eclModel, transmission: P.TRANSMISSION, damage: P.DEPTH_DAMAGE, calibration: CALIBRATION_VERSION, CCKP, NGFS, WORLD_BANK, profile })) : base;
 }

@@ -42,7 +42,7 @@ export function baseFinancials(loan: Loan) {
 }
 
 export interface BottomUpTrace {
-  revenue: number; revenueS: number; opex: number; opexS: number; macroLoss: number; physicalLoss: number; carbonCost: number;
+  revenue: number; revenueS: number; opex: number; opexS: number; macroLoss: number; physicalLoss: number; carbonCost: number; energyCostChange?: number;
   cfads: number; cfadsS: number; debtService: number; debtServiceS: number; dscr: number; dscrS: number;
   floodDepth: number; floodDamage: number; floodCurve: string | null; lostRecovery: number;
 }
@@ -58,7 +58,11 @@ export function bottomUp(loan: Loan, G: GhanaShocks) {
   const intensityRel = clamp(loan.emissionsIntensity / sec.carbonIntensity, 0.3, 2);
   const carbonCost = (revenueMacro - physicalLoss) * sec.transition * T.carbonCostPer100 * (G.carbon / 100) * intensityRel * (loan.transitionPlan ? 1 - T.planRelief : 1);
   const revenueS = revenueMacro - physicalLoss;
-  const opexS = b.opex * (1 - T.variableCostShare + T.variableCostShare * (revenueS / b.revenue)) * (1 + (Math.max(0, G.inflation) / 100) * (1 - T.pricingPower));
+  const opexBeforePrices = b.opex * (1 - T.variableCostShare + T.variableCostShare * (revenueS / b.revenue));
+  const energyShare = G.energy?.opexShare ?? 0;
+  const inflationCost = (Math.max(0, G.inflation) / 100) * (1 - T.pricingPower);
+  const energyCostChange = G.energy ? opexBeforePrices * energyShare * (G.energy.ghana / 100) : 0;
+  const opexS = opexBeforePrices * (1 + inflationCost * (1 - energyShare)) + energyCostChange;
   const debtServiceS = b.debtService + loan.ead * T.floatingShare * (Math.max(0, G.rate) / 100);
   const cfadsS = revenueS - opexS - carbonCost;
   const dscrS = cfadsS / debtServiceS;
@@ -68,13 +72,13 @@ export function bottomUp(loan: Loan, G: GhanaShocks) {
   const lgdS = clamp(Math.max(CREDIT.lgdFloor, loan.lgd + lostRecovery));
   const trace: BottomUpTrace = {
     revenue: b.revenue, revenueS, opex: b.opex, opexS, macroLoss, physicalLoss, carbonCost,
-    cfads: b.cfads, cfadsS, debtService: b.debtService, debtServiceS, dscr: b.dscr, dscrS,
+    ...(G.energy ? { energyCostChange } : {}), cfads: b.cfads, cfadsS, debtService: b.debtService, debtServiceS, dscr: b.dscr, dscrS,
     floodDepth: flood.depth, floodDamage: flood.damage, floodCurve: flood.curve, lostRecovery,
   };
   return { pdS, lgdS, trace };
 }
 
-export interface SectorStress { key: string; name: string; ead: number; pd: number; pdS: number; uplift: number; lgdUplift: number; physical: number; parts: { gdp: number; inflation: number; rate: number; carbon: number; physical: number } }
+export interface SectorStress { key: string; name: string; ead: number; pd: number; pdS: number; uplift: number; lgdUplift: number; physical: number; parts: { gdp: number; inflation: number; rate: number; energy?: number; carbon: number; physical: number } }
 
 export function topDownSectors(loans: Loan[], G: GhanaShocks, physicalScoreOf: (l: Loan) => number): SectorStress[] {
   const c = T.topDown, added = Math.max(0, G.physical - 1) / 0.75;
@@ -85,12 +89,13 @@ export function topDownSectors(loans: Loan[], G: GhanaShocks, physicalScoreOf: (
     const physical = xs.reduce((a, l) => a + physicalScoreOf(l) * l.ead, 0) / ead;
     const parts = {
       gdp: c.bGdp * T.sector[s.key].gdpElasticity * Math.max(0, -G.gdp),
-      inflation: c.bInflation * Math.max(0, G.inflation),
+      inflation: c.bInflation * Math.max(0, G.inflation) * (1 - (G.energy?.opexShare ?? 0)),
+      ...(G.energy ? { energy: c.bInflation * G.energy.opexShare * Math.max(0, G.energy.ghana) } : {}),
       rate: c.bRate * Math.max(0, G.rate),
       carbon: c.bCarbon * s.transition * (G.carbon / 100),
       physical: c.bPhysical * physical * added,
     };
-    const uplift = parts.gdp + parts.inflation + parts.rate + parts.carbon + parts.physical;
+    const uplift = parts.gdp + parts.inflation + (parts.energy ?? 0) + parts.rate + parts.carbon + parts.physical;
     return { key: s.key, name: s.name, ead, pd, pdS: sigmoid(logit(pd) + uplift), uplift, lgdUplift: c.lgdPhysical * physical * added, physical, parts };
   });
 }

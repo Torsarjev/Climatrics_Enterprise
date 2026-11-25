@@ -13,7 +13,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     'dataset_id', 'dataset_hash', 'model_version', 'parameters_hash', 'output_hash',
     'gdp_pct', 'inflation_pp', 'rate_pp', 'carbon_usd2010_per_t', 'rainfall_multiplier', 'physical_multiplier',
     'baseline_ecl_ghs', 'stressed_ecl_ghs', 'incremental_ecl_ghs', 'pretax_provision_profit_impact_ghs', 'baseline_capital_ghs', 'stressed_capital_ghs',
-    'baseline_car_pct', 'stressed_car_pct', 'car_change_pp', 'baseline_lcr_pct', 'stressed_lcr_pct', 'lcr_change_pp', 'ghana_calibration_id',
+    'baseline_car_pct', 'stressed_car_pct', 'car_change_pp', 'baseline_lcr_pct', 'stressed_lcr_pct', 'lcr_change_pp', 'ghana_calibration_id', 'energy_regional_pct', 'energy_ghana_pct', 'energy_opex_share_pct',
   ];
   const escape = (value: string | number = '') => `"${String(value).replace(/"/g, '""')}"`;
   const lines = records.map((rec) => {
@@ -24,7 +24,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       s.gdp, s.inflation, s.rate, s.carbon, s.flood, s.physical,
       h.ecl, h.eclStressed, report.incrementalEcl, report.profitBeforeTaxImpact, report.capitalBefore, report.capitalAfter,
       h.carBefore * 100, h.carAfter * 100, (h.carAfter - h.carBefore) * 100,
-      report.lcrBefore * 100, h.lcrAfter * 100, (h.lcrAfter - report.lcrBefore) * 100, rec.input.calibration?.id ?? CALIBRATION_VERSION].map(escape).join(',');
+      report.lcrBefore * 100, h.lcrAfter * 100, (h.lcrAfter - report.lcrBefore) * 100, rec.input.calibration?.id ?? CALIBRATION_VERSION, s.energy?.regional, s.energy?.ghana, s.energy ? s.energy.opexShare * 100 : undefined].map(escape).join(',');
   });
   return new Response([headers.join(','), ...lines].join('\r\n'), {
     headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="scenario-${records[0].batchId}.csv"`, 'Cache-Control': 'private, no-store' },
