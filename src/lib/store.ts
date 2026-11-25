@@ -273,7 +273,7 @@ async function runParamsHash(input: RunInput) {
   return input.eclModel ? sha256(JSON.stringify({ base, eclModel: input.eclModel, transmission: P.TRANSMISSION, damage: P.DEPTH_DAMAGE, calibration: CALIBRATION_VERSION, CCKP, NGFS, WORLD_BANK, profile })) : base;
 }
 
-export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | 'approach'>, years: number[], expectedCalibration?: string) {
+export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | 'approach'>, years: number[], expectedCalibration?: string, expectedDataset?: string) {
   const user = await currentUser();
   if (!user.can.includes('run' as never)) throw new Error('Your role cannot run stress tests');
   const horizons = [...new Set(years)].sort((a, b) => a - b);
@@ -286,6 +286,9 @@ export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | '
     throw new Error('The active Ghana calibration changed. Reload Scenario Analysis to review the new shocks.');
   }
   const { dataset, loans } = await activeLoans();
+  if (expectedDataset !== undefined && expectedDataset !== dataset.id) {
+    throw new Error('The active loan book changed. Prepare scenario batches again using the current loan book.');
+  }
   validateScenarioLoans(loans);
 
   const batchId = `BATCH-${randomUUID()}`;
@@ -338,6 +341,36 @@ export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | '
 async function reportingHash(run: StressRun) {
   return sha256(JSON.stringify({ credit: await outHash(run), reporting: scenarioReporting(run),
     input: run.input, ecl: run.summary.ecl, eclStressed: run.summary.eclStressed, capital: run.capital, liquidity: run.liquidity }));
+}
+
+export async function prepareIcaapBatches(approach: RunInput['approach']) {
+  const user = await currentUser();
+  if (!user.can.includes('run' as never)) throw new Error('Only an analyst can prepare ICAAP source batches.');
+  if (approach !== 'bottom-up' && approach !== 'top-down') throw new Error('Choose a credit approach.');
+  const d = await db();
+  const dataset = d.datasets.find((item) => item.id === d.activeDataset);
+  if (!dataset?.control.reconciled) throw new Error('Load a reconciled loan book first.');
+  const calibration = activeCalibration(d.calibration);
+  const fingerprint = await runParamsHash({ scenario: 'nz2050', horizon: 2027, approach, eclModel: STAGED_ECL_MODEL, calibration });
+  const selected: Record<string, { id: string; label: string }> = {};
+  for (const { key, years, name } of GCB_PATHWAYS) {
+    const candidates = (await db()).runs.filter((run) => run.input.scenario === key && run.batchId);
+    const matching = [...new Set(candidates.map((run) => run.batchId!))].flatMap((id) => {
+      const rows = candidates.filter((run) => run.batchId === id);
+      if (rows.length !== years.length || years.some((year) => !rows.some((run) => run.input.horizon === year)) ||
+        rows.some((run) => run.status === 'rejected' || !run.reporting || run.datasetHash !== dataset.hash ||
+          run.paramsHash !== fingerprint || run.input.approach !== approach)) return [];
+      return [{ id, approved: rows.every((run) => run.status === 'approved') }];
+    });
+    const existing = matching.find((candidate) => candidate.approved) ?? matching[0];
+    const id = existing?.id ?? await createScenarioBatch({ scenario: key, approach }, years, calibration.id, dataset.id);
+    selected[key] = { id, label: `${name} · ${dataset.id} · ${approach} · ${existing?.approved ? 'approved' : 'review pending'}` };
+  }
+  const current = await db();
+  if (current.activeDataset !== dataset.id || activeCalibration(current.calibration).id !== calibration.id) {
+    throw new Error('The loan book or active calibration changed during setup. Prepare batches again.');
+  }
+  return selected;
 }
 
 export async function createIcaap(form: FormData) {
