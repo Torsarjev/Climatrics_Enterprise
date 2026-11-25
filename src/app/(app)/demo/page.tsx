@@ -37,7 +37,7 @@ const steps = [
     title: 'Approve and reproduce the run',
     href: '/governance',
     link: 'Open model governance',
-    detail: 'Submit the draft as Kofi. Switch to Ama to approve and verify the run hash. Use Yaw’s read-only view to show the audit trail.',
+    detail: 'Submit the draft as Kofi. Switch to Ama to approve and verify the run hash. Sign in as Yaw (Internal Audit) to show the audit trail and record an audit opinion in Internal audit.',
   },
   {
     title: 'Close with the regulatory pack',

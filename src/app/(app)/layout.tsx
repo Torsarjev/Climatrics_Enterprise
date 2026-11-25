@@ -26,6 +26,7 @@ const NAV = [
   ['/disclosure', 'IFRS S1/S2 disclosure', 'disclosure'],
   ['/reports', 'Regulatory reports', 'reports'],
   ['/governance', 'Data and model governance', 'governance'],
+  ['/internal-audit', 'Internal audit', 'governance'],
   ['/methodology', 'Methodology', 'disclosure'],
   ['/architecture', 'Architecture', 'architecture'],
   ['/security', 'Security & integrations', 'security'],
@@ -55,7 +56,7 @@ export default async function AppLayout({ children }: Readonly<{ children: React
             <div className="lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto"><NavLinks items={NAV} /></div>
           </aside>
           <div className="min-w-0 flex-1">
-            {user.can.length === 0 && <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-800">Read-only access · {user.name}, {user.role}. You can view every screen, the lineage and the audit trail, but cannot load data, run or approve.</div>}
+            {user.can.includes('audit' as never) && <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-800">Internal Audit · {user.name}. You can view every screen, the lineage and the audit trail, and record audit opinions in <Link href="/internal-audit" className="underline">Internal audit</Link>. You cannot load data, run or approve.</div>}
             <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>
           </div>
         </div>

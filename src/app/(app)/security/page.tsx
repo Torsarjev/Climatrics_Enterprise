@@ -5,7 +5,7 @@ const LIVE = [
   ['Authentication', 'Named accounts; passwords hashed with scrypt; signed (HMAC-SHA256) session cookie, HttpOnly, SameSite, Secure over HTTPS, 8-hour expiry', 'Sign in / sign out'],
   ['Multi-factor authentication', 'Password plus a 6-digit time-based code (TOTP, RFC 6238) from Microsoft or Google Authenticator; QR enrolment on first sign-in; used codes cannot be replayed; the 5-minute step between password and code is a separate signed token', 'Sign in · Your account'],
   ['Brute-force protection', '5 failed password or code attempts lock the account for 15 minutes', 'Login page message'],
-  ['Authorisation', 'Role checked on the server for every action and API call: analyst runs and loads data, approver approves, auditor is read-only', 'Sign in as Yaw and try to run'],
+  ['Authorisation', 'Role checked on the server for every action and API call: analyst runs and loads data, approver approves, Internal Audit reviews and records opinions but cannot change or approve', 'Sign in as Yaw and try to run'],
   ['Maker-checker', 'The person who submits a run or screening cannot approve it; approvals need a note', 'Credit risk & ECL · Screening'],
   ['Audit trail', 'Every sign-in, data load, run, screening, approval and export is logged with user and time; CSV export', 'Data and model governance'],
   ['API protection', 'Every API except the health probe returns 401 without a valid session', 'Try an API link while signed out'],
@@ -31,6 +31,8 @@ const PLANNED = [
 const API: [string, string, string, string, string?][] = [
   ['GET', '/api/health', 'Liveness probe (no data returned)', 'Public', '/api/health'],
   ['GET', '/api/sample', 'Demo loan-book extract (CSV) in the ingestion format', 'Any signed-in user', '/api/sample'],
+  ['GET', '/api/datasets', 'Loan book dataset versions with SHA-256, control totals and rejected rows (JSON)', 'Any signed-in user', '/api/datasets'],
+  ['POST', '/api/datasets', 'Load a loan book extract (text/csv): validated, reconciled and versioned like a file upload', 'Analyst'],
   ['GET', '/api/runs', 'Stress-test runs with fingerprints, status and headline results (JSON)', 'Any signed-in user', '/api/runs'],
   ['GET', '/api/board', 'Risk appetite limits, KRIs, targets and actions (JSON)', 'Any signed-in user', '/api/board'],
   ['GET', '/api/calibration', 'Ghana-calibrated NGFS scenario variables with sources (CSV)', 'Any signed-in user', '/api/calibration'],

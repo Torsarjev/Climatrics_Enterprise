@@ -30,7 +30,7 @@ import { WORLD_BANK } from '@/data/worldbank';
 export const USERS = [
   { id: 'kofi', name: 'Kofi Mensah', role: 'Climate Risk Analyst', can: ['run', 'ingest'] },
   { id: 'ama', name: 'Ama Owusu', role: 'Head of Credit Risk (Approver)', can: ['approve'] },
-  { id: 'yaw', name: 'Yaw Boateng', role: 'Internal Audit (read-only)', can: [] as string[] },
+  { id: 'yaw', name: 'Yaw Boateng', role: 'Internal Audit (third line)', can: ['audit'] },
 ] as const;
 export type User = (typeof USERS)[number];
 
@@ -44,6 +44,13 @@ export interface RunRecord {
   headline: { ecl: number; eclStressed: number; carBefore: number; carAfter: number; lcrAfter: number; var999: number };
 }
 export interface AuditEvent { at: string; by: string; action: string; target: string; detail?: string }
+export type AuditKind = 'icaap' | 'ilaap' | 'run' | 'screening';
+export type AuditOpinion = 'satisfactory' | 'needs improvement' | 'unsatisfactory';
+export interface AuditReview { id: string; kind: AuditKind; target: string; at: string; by: string; opinion: AuditOpinion; findings: string; reference?: string }
+export interface AuditItem {
+  kind: AuditKind; id: string; title: string; href: string; status: string; preparedBy: string; approvedBy?: string; approvedAt?: string;
+  exceptions: string[]; review?: AuditReview;
+}
 export interface ScreenRunRecord {
   id: string; createdAt: string; by: string; facilityId: string; borrower: string; parent?: string;
   input: ScreenInput; datasetId?: string; result?: ScreenResult; reviewedResult?: ScreenResult; rulesHash: string; versions: Record<string, string>;
@@ -75,7 +82,7 @@ export interface CalibrationExecution {
   decision?: { action: 'activate' | 'decline'; by: string; at: string; note: string };
 }
 
-interface Db { regulatory?: RegulatoryPack[]; ilaap?: IlaapAssessment[]; icaap?: IcaapAssessment[]; calibration?: CalibrationProfile; calibrationExecutions?: CalibrationExecution[]; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
+interface Db { regulatory?: RegulatoryPack[]; ilaap?: IlaapAssessment[]; icaap?: IcaapAssessment[]; calibration?: CalibrationProfile; calibrationExecutions?: CalibrationExecution[]; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string>; auditReviews?: AuditReview[] }
 
 const g = globalThis as unknown as { __db?: Db; __loans?: Map<string, Loan[]>; __runs?: Map<string, StressRun> };
 g.__loans ??= new Map();
@@ -921,4 +928,42 @@ export async function reviewScreenRun(id: string, action: 'submit' | 'approve' |
   }
   d.audit.unshift({ at: now(), by: u.name, action: `screening.${action === 'submit' ? 'submitted' : action === 'approve' ? 'approved' : action === 'escalate' ? 'escalated' : 'returned'}`, target: id, detail: [note, action === 'approve' && rec.verifiedEvidence?.length ? `evidence verified: ${rec.verifiedEvidence.join(', ')}` : '', action === 'approve' && rec.supersededRules ? 'approved under superseded screening rules' : ''].filter(Boolean).join(' · ') || undefined });
   await save(d);
+}
+
+const AUDITABLE = ['approved', 'rejected', 'returned', 'escalated'];
+
+export function auditRegister(d: Db): AuditItem[] {
+  const latest = (kind: AuditKind, id: string) => (d.auditReviews ?? []).find((r) => r.kind === kind && r.target === id);
+  const items: AuditItem[] = [
+    ...(d.icaap ?? []).map((a) => ({ kind: 'icaap' as const, id: a.id, title: `Climate ICAAP · ${a.opening.entity} · opening ${a.opening.asOf}`, href: `/capital?assessment=${a.id}`,
+      status: a.status, preparedBy: a.by, approvedBy: a.reviewer, approvedAt: a.reviewedAt,
+      exceptions: [a.opening.illustrative ? 'illustrative finance inputs' : '', a.unapprovedSources?.length ? `approved before ${a.unapprovedSources.length} source runs were approved` : ''].filter(Boolean) })),
+    ...(d.ilaap ?? []).map((a) => ({ kind: 'ilaap' as const, id: a.id, title: `Climate ILAAP · Treasury date ${a.inputs.asOf}`, href: `/liquidity?assessment=${a.id}`,
+      status: a.status, preparedBy: a.by, approvedBy: a.reviewer, approvedAt: a.reviewedAt,
+      exceptions: [a.status === 'approved' && a.illustrative ? 'approved on illustrative Treasury data' : '', a.status === 'approved' && !a.approvalReference ? 'no ALCO sign-off reference' : ''].filter(Boolean) })),
+    ...d.runs.map((r) => ({ kind: 'run' as const, id: r.id, title: `Stress run · ${P.SCENARIOS.find((s) => s.key === r.input.scenario)?.name ?? r.input.scenario} · ${r.input.horizon}`, href: `/runs/${r.id}`,
+      status: r.status, preparedBy: r.submittedBy ?? r.by, approvedBy: r.reviewedBy, approvedAt: r.reviewedAt,
+      exceptions: [r.status === 'approved' && r.reviewedBy === (r.submittedBy ?? r.by) ? 'maker and checker are the same person' : ''].filter(Boolean) })),
+    ...(d.screenRuns ?? []).map((s) => ({ kind: 'screening' as const, id: s.id, title: `Screening · ${s.borrower}`, href: `/screening/${s.id}`,
+      status: s.status, preparedBy: s.submittedBy ?? s.by, approvedBy: s.reviewedBy, approvedAt: s.reviewedAt,
+      exceptions: [s.supersededRules ? 'approved under superseded screening rules' : ''].filter(Boolean) })),
+  ];
+  return items.filter((i) => AUDITABLE.includes(i.status)).map((i) => ({ ...i, review: latest(i.kind, i.id) }))
+    .sort((a, b) => (b.approvedAt ?? '').localeCompare(a.approvedAt ?? ''));
+}
+
+export async function recordAuditReview(kind: string, target: string, opinion: string, findings: string, reference: string) {
+  const user = await currentUser();
+  if (!user.can.includes('audit' as never)) throw new Error('Only Internal Audit can record an audit review.');
+  if (!['icaap', 'ilaap', 'run', 'screening'].includes(kind) || !['satisfactory', 'needs improvement', 'unsatisfactory'].includes(opinion)) throw new Error('Choose an audit opinion.');
+  if (findings.length > 2000 || reference.length > 200) throw new Error('Findings or reference too long.');
+  if (opinion !== 'satisfactory' && !findings.trim()) throw new Error('Record the findings for a qualified opinion.');
+  const at = now();
+  await updateCalibrationStore((current) => {
+    const item = auditRegister(current).find((i) => i.kind === kind && i.id === target);
+    if (!item) throw new Error('Only approved or decided items can be audited.');
+    const review: AuditReview = { id: `AUD-${randomUUID().slice(0, 8)}`, kind: kind as AuditKind, target, at, by: user.name, opinion: opinion as AuditOpinion, findings: findings.trim(), reference: reference.trim() || undefined };
+    return { ...current, auditReviews: [review, ...(current.auditReviews ?? [])],
+      audit: [{ at, by: user.name, action: 'audit.reviewed', target, detail: [opinion, reference.trim(), findings.trim()].filter(Boolean).join(' · ') }, ...current.audit] };
+  });
 }
