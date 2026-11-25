@@ -12,8 +12,10 @@
   "dependencies": {
     "@netlify/blobs": "^11.1.10",
     "@types/qrcode": "1.5.5",
+    "docx": "^9.16.0",
     "leaflet": "^1.9.4",
     "next": "15.5.29",
+    "pdfkit": "^0.21.0",
     "qrcode": "1.5.4",
     "react": "19.1.10",
     "react-dom": "19.1.10",
@@ -26,6 +28,7 @@
     "@tailwindcss/postcss": "^4",
     "@types/leaflet": "^1.9.20",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.7",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
