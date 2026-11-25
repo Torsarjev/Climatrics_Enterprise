@@ -1,6 +1,8 @@
 import { CALIBRATION_VERSION } from '@/lib/calibration';
+import { notFound } from 'next/navigation';
+import { RegulatoryWorkspace } from '@/components/regulatory-workspace';
 import Link from 'next/link';
-import { db, getRun, screenRuns } from '@/lib/store';
+import { currentUser, db, getRun, regulatorySources, screenRuns } from '@/lib/store';
 import { financedBook } from '@/lib/emissions';
 import { portfolioScreening } from '@/lib/esg/portfolio';
 import { boardView } from '@/lib/board';
@@ -14,10 +16,17 @@ import { ghs, pct, when } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ run?: string; batch?: string; audience?: string }> }) {
-  const { run: runId, batch: batchId, audience } = await searchParams;
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ run?: string; batch?: string; audience?: string; view?: string; pack?: string; standard?: string; requirement?: string; filter?: string }> }) {
+  const { run: runId, batch: batchId, audience, view, pack, standard, requirement, filter } = await searchParams;
   const isBoard = audience === 'board';
   const d = await db();
+  if (!runId && !batchId && !isBoard && view !== 'stress') {
+    const history = d.regulatory ?? [];
+    const selected = pack ? history.find((item) => item.id === pack) : history[0];
+    if (pack && !selected) notFound();
+    return <RegulatoryWorkspace pack={selected} history={history} sources={regulatorySources(d)} user={await currentUser()}
+      standard={standard} requirement={requirement} filter={filter} />;
+  }
   const available = reportingBatches(d.runs);
   const primary = batchId ? available.find((item) => item.id === batchId) :
     !runId ? available.find((item) => item.approved) ?? available[0] : undefined;
@@ -33,7 +42,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const approved = included.length ? included.every((item) => item.approved) : rec.status === 'approved';
   const packTitle = isBoard ? 'Board climate risk pack' : 'Climate risk regulatory pack';
   const singleRuns = d.runs.filter((item) => !item.batchId);
-  const baseHref = isBoard ? '/reports?audience=board' : '/reports';
+  const baseHref = isBoard ? '/reports?audience=board' : '/reports?view=stress';
   const S = run.summary, C = run.capital, Q = run.liquidity, L = run.lossDist;
   const ead = S.ead;
   const carbon = loans.filter((l) => sectorOf(l.sector).transition >= 0.5).reduce((a, l) => a + l.ead, 0);
@@ -49,7 +58,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     <>
       <div className="no-print"><PageHead area="Engine IV · Regulatory & management reporting" title={packTitle} intro="Standardized climate stress reporting for Bank of Ghana and Board review.">
         <div className="flex flex-wrap items-end gap-3">
-          <Link href={baseHref} className="text-sm underline">Standard pack</Link>
+          <Link href={baseHref} className="text-sm underline">Standard stress pack</Link>
+          <Link href="/reports" className="text-sm underline">Requirements and evidence</Link>
           {available.length > 0 && <form action="/reports" method="get" className="flex flex-wrap items-end gap-2">
             {isBoard && <input type="hidden" name="audience" value="board" />}
             <label className="text-sm">Saved multi-year batch
