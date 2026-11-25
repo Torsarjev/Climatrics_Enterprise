@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CALIBRATION_VERSION, ghanaShocks, NGFS_RELEASE } from '@/lib/calibration';
+import { activeCalibration, ghanaShocks, NGFS_RELEASE } from '@/lib/calibration';
 import { currentUser, db } from '@/lib/store';
 import { scenarioOf } from '@/lib/params';
 import { Badge, Card, PageHead, Table } from '@/components/ui';
@@ -12,14 +12,15 @@ export const dynamic = 'force-dynamic';
 export default async function StressPage() {
   const user = await currentUser();
   const d = await db();
+  const calibration = activeCalibration(d.calibration);
   const pathways = GCB_PATHWAYS.map(({ years, ...pathway }) => ({
-    ...pathway, points: years.map((year) => ({ year, shocks: ghanaShocks(pathway.key, year, d.calibration) })),
+    ...pathway, points: years.map((year) => ({ year, shocks: ghanaShocks(pathway.key, year, calibration) })),
   }));
   return (
     <>
       <PageHead area="Engine III · Scenario analysis & stress testing" title="Climate scenarios & credit losses" intro="Select a GCB pathway, reporting years and credit approach. Trace the scenario from Ghana-calibrated variables to facility PD, LGD, IFRS 9 stage and discounted ECL." />
       {user.can.includes('run' as never)
-        ? <Card title="Run a GCB scenario" note={<Link href="/calibration" className="underline">Ghana calibration · {d.calibration?.id ?? CALIBRATION_VERSION}</Link>}><RunForm pathways={pathways} calibration={d.calibration?.id ?? CALIBRATION_VERSION} /></Card>
+        ? <Card title="Run a GCB scenario" note={<Link href="/calibration" className="underline">Ghana calibration · {calibration.id}</Link>}><RunForm pathways={pathways} calibration={calibration.id} /></Card>
         : user.can.includes('approve' as never)
           ? <Card title="Awaiting your approval" note="approvers review; analysts run">
               {d.runs.filter((r) => r.status === 'submitted').length === 0 ? <p className="text-sm text-zinc-500">No runs waiting for approval.</p> : (

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CALIBRATION_VERSION } from '@/lib/calibration';
+import { activeCalibration, CALIBRATION_VERSION } from '@/lib/calibration';
 import { activeLoans, db, getRun } from '@/lib/store';
 import { ScenarioKey, scenarioOf } from '@/lib/params';
 import { GCB_PATHWAYS } from '@/lib/gcb-scenarios';
@@ -25,7 +25,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   const key = saved?.rec.input.scenario ?? pathway.key;
   const horizon = saved?.rec.input.horizon ?? (pathway.years.includes(Number(q.horizon)) ? Number(q.horizon) : pathway.years.at(-1)!);
   const loans = saved?.loans ?? (await activeLoans()).loans;
-  const calibration = saved ? saved.rec.input.calibration : (await db()).calibration;
+  const calibration = saved ? saved.rec.input.calibration : activeCalibration((await db()).calibration);
   const input = saved?.rec.input ?? { scenario: key, horizon, eclModel: STAGED_ECL_MODEL, calibration };
   const td = runCredit(loans, { ...input, approach: 'top-down' });
   const bu = runCredit(loans, { ...input, approach: 'bottom-up' });
