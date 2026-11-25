@@ -64,13 +64,13 @@ export default async function RunPage({ params, searchParams }: { params: Promis
         <Stat href="/methodology#baseline-ecl" label="Stage 2 + 3 exposure" value={`${pct((S.stages[1].before + S.stages[2].before) / S.ead)} → ${pct((S.stages[1].after + S.stages[2].after) / S.ead)}`} sub="significant increase in credit risk" tone="warn" />
       </div>
 
-      <Card title="Ghana-calibrated shocks used in this run" className="mt-6" note={<Link href={`/calibration?scenario=${rec.input.scenario}`} className="underline">calibration method</Link>}>
+      <Card title="Ghana-calibrated shocks used in this run" className="mt-6" note={<Link href={`/calibration?scenario=${rec.input.scenario}&run=${rec.id}`} className="underline">calibration method</Link>}>
         <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3 xl:grid-cols-6">
           {[['GDP', `${run.shocks.gdp.toFixed(1)}%`], ['Inflation', `${run.shocks.inflation >= 0 ? '+' : ''}${run.shocks.inflation.toFixed(1)} pp`], ['Long-term rate', `${run.shocks.rate >= 0 ? '+' : ''}${run.shocks.rate.toFixed(1)} pp`], ['Carbon price', `$${run.shocks.carbon.toFixed(0)}/t`], ['Extreme rainfall', `×${run.shocks.flood.toFixed(2)}`], ['Composite physical hazard', `×${run.shocks.physical.toFixed(2)}`]].map(([k, v]) => (
             <div key={k} className="rounded-md bg-zinc-50 px-3 py-2"><p className="text-xs text-zinc-500">{k}</p><p className="font-semibold tabular-nums">{v}</p></div>
           ))}
         </div>
-        <p className="mt-2 text-xs text-zinc-500">{rec.input.approach === 'bottom-up' ? 'Bottom-up: these shocks move each borrower’s revenue, costs, debt service and collateral, then DSCR sets the PD band.' : 'Top-down: these shocks move each sector’s PD and LGD through sector sensitivities; borrowers inherit their sector’s stress.'} <Link href={`/compare?scenario=${rec.input.scenario}&horizon=${rec.input.horizon}`} className="underline">Compare both approaches</Link>.</p>
+        <p className="mt-2 text-xs text-zinc-500">{rec.input.approach === 'bottom-up' ? 'Bottom-up: these shocks move each borrower’s revenue, costs, debt service and collateral, then DSCR sets the PD band.' : 'Top-down: these shocks move each sector’s PD and LGD through sector sensitivities; borrowers inherit their sector’s stress.'} <Link href={`/compare?run=${rec.id}`} className="underline">Compare both approaches</Link>.</p>
       </Card>
 
       <Card title="Impact by sector" className="mt-6">

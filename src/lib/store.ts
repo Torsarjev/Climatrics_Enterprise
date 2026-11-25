@@ -10,7 +10,7 @@ import { ScreenInput, type ScreenResult, neededEvidence, screen, validate } from
 import { CRITERIA, FRAMEWORK_VERSIONS, QUESTIONS } from './esg/rules';
 import * as P from './params';
 import { sha256 } from './math';
-import { CALIBRATION_VERSION, ghanaShocks } from './calibration';
+import { CALIBRATION_VERSION, CalibrationProfile, CalibrationSettings, calibrationCoefficients, ghanaShocks } from './calibration';
 import { scenarioReporting } from './scenario-report';
 import { isGcbScenarioYear } from './gcb-scenarios';
 import { MAX_ECL_MATURITY, STAGED_ECL_MODEL } from './staged-ecl';
@@ -42,7 +42,7 @@ export interface ScreenRunRecord {
   status: 'draft' | 'submitted' | 'approved' | 'escalated' | 'returned';
   verifiedEvidence?: string[]; submittedBy?: string; reviewedBy?: string; reviewedAt?: string; note?: string;
 }
-interface Db { datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
+interface Db { calibration?: CalibrationProfile; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
 
 const g = globalThis as unknown as { __db?: Db; __loans?: Map<string, Loan[]>; __runs?: Map<string, StressRun> };
 g.__loans ??= new Map();
@@ -128,12 +128,32 @@ export async function getRun(id: string, includeLoans = false) {
 
 const outHash = (run: StressRun) => sha256(JSON.stringify(run.results.map((r) => [r.id, r.pdStressed.toFixed(8), r.lgdStressed.toFixed(8), r.eclStressed.toFixed(2)])) + JSON.stringify(run.lossDist.stressed.var999));
 
-async function runParamsHash(input: RunInput) {
-  const base = await paramsHash();
-  return input.eclModel ? sha256(JSON.stringify({ base, eclModel: input.eclModel, transmission: P.TRANSMISSION, damage: P.DEPTH_DAMAGE, calibration: CALIBRATION_VERSION, CCKP, NGFS, WORLD_BANK })) : base;
+export async function activateCalibration(settings: CalibrationSettings) {
+  const user = await currentUser();
+  if (!user.can.includes('run' as never)) throw new Error('Your role cannot activate a Ghana calibration.');
+  const profile: CalibrationProfile = {
+    id: `GH-${randomUUID()}`, settings, coefficients: calibrationCoefficients(settings),
+    activatedBy: user.name, activatedAt: now(),
+  };
+  const apply = (current: Db): Db => ({
+    ...current, calibration: profile,
+    audit: [{ at: profile.activatedAt, by: user.name, action: 'calibration.activated', target: profile.id,
+      detail: JSON.stringify({ settings, coefficients: profile.coefficients }) }, ...current.audit],
+  });
+  const current = await db();
+  if (onNetlify) {
+    await updateExistingBlob('store.json', (data) => JSON.stringify(apply(JSON.parse(data) as Db), null, 1));
+  } else {
+    await save(apply(current));
+  }
 }
 
-export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | 'approach'>, years: number[]) {
+async function runParamsHash(input: RunInput) {
+  const base = await paramsHash();
+  return input.eclModel ? sha256(JSON.stringify({ base, eclModel: input.eclModel, transmission: P.TRANSMISSION, damage: P.DEPTH_DAMAGE, calibration: CALIBRATION_VERSION, CCKP, NGFS, WORLD_BANK, profile: input.calibration })) : base;
+}
+
+export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | 'approach'>, years: number[], expectedCalibration?: string) {
   const user = await currentUser();
   if (!user.can.includes('run' as never)) throw new Error('Your role cannot run stress tests');
   const horizons = [...new Set(years)].sort((a, b) => a - b);
@@ -141,6 +161,10 @@ export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | '
     throw new Error('Select eligible reporting years for the GCB pathway and an assessment approach');
   }
 
+  const calibration = (await db()).calibration;
+  if (expectedCalibration !== undefined && expectedCalibration !== (calibration?.id ?? CALIBRATION_VERSION)) {
+    throw new Error('The active Ghana calibration changed. Reload Scenario Analysis to review the new shocks.');
+  }
   const { dataset, loans } = await activeLoans();
   if (!loans.length) throw new Error('Load a loan book before running a scenario');
   const invalidExposure = loans.find((loan) => !Number.isFinite(loan.ead) || loan.ead <= 0);
@@ -150,7 +174,7 @@ export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | '
 
   const batchId = `BATCH-${randomUUID()}`;
   const createdAt = now();
-  const input = { ...request, eclModel: STAGED_ECL_MODEL };
+  const input = { ...request, eclModel: STAGED_ECL_MODEL, ...(calibration ? { calibration } : {}) };
   const fingerprint = await runParamsHash({ ...input, horizon: horizons[0] });
   const calculated = await Promise.all(horizons.map(async (horizon) => {
     const run = runStress(loans, { ...input, horizon });
@@ -172,7 +196,7 @@ export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | '
     current.runs.unshift(...[...records].reverse());
     current.audit.unshift(
       { at: createdAt, by: user.name, action: 'scenario.batch_created', target: batchId,
-        detail: `${P.scenarioOf(input.scenario).name} · ${horizons.join(', ')} · ${input.approach} · dataset ${dataset.id}` },
+        detail: `${P.scenarioOf(input.scenario).name} · ${horizons.join(', ')} · ${input.approach} · dataset ${dataset.id} · calibration ${calibration?.id ?? CALIBRATION_VERSION}` },
       ...records.map((rec) => ({ at: createdAt, by: user.name, action: 'run.created', target: rec.id,
         detail: `${rec.input.horizon} · ${batchId} · dataset ${dataset.id}` })),
     );
