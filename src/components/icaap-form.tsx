@@ -57,9 +57,13 @@ export function IcaapReview({ id, actions }: { id: string; actions: ('submit' | 
   return <form action={action} className="mt-4 space-y-2">
     <input type="hidden" name="id" value={id} />
     <label className="block text-sm font-medium">Review note<input className={field} name="note" maxLength={1000} /></label>
-    <div className="flex gap-3">
-      {actions.map((value) => <button key={value} className={btnClass} name="action" value={value} disabled={pending}>{value === 'submit' ? 'Submit for review' : value === 'approve' ? 'Approve' : 'Reject'}</button>)}
-    </div>
+    {actions.length === 1
+      ? <input type="hidden" name="action" value={actions[0]} />
+      : <fieldset className="flex gap-4 text-sm">
+          <legend className="mb-2 font-medium">Decision</legend>
+          {actions.map((value) => <label key={value} className="flex gap-2"><input type="radio" name="action" value={value} required />{value === 'approve' ? 'Approve' : 'Reject'}</label>)}
+        </fieldset>}
+    <button className={btnClass} disabled={pending}>{actions.length === 1 ? 'Submit for review' : 'Record decision'}</button>
     {state?.error && <p role="alert" className="text-sm text-red-700">{state.error}</p>}
   </form>;
 }
