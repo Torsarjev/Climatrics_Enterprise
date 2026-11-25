@@ -34,9 +34,9 @@ export function CalibrationForm({ start, end, benchmarks }: { start: number; end
       <p className="text-sm text-zinc-700">Ghana is the dependent series (Y). The benchmark is the independent series (X). A peer-country benchmark is a proxy for the NGFS regional shock.</p>
       <p id="rate-help" className="text-sm text-zinc-700">Use <code>year,ghana,regional</code> with rates in percent and at least nine consecutive matched years within the WDI window. Pair the same year, maturity, instrument and observation convention. For example, use Ghana and comparable regional 10-year local-currency sovereign yields, both measured as annual averages. Enter 12.5 for a 12.5% yield. The bundled WDI data supplies GDP growth and CPI inflation. WDI lending rates are a different instrument from long-term sovereign yields and the checked Ghana WDI lending series has no observations in this window. With no upload, the preview uses the regional rate shock at ×1.</p>
       {fitRate && <div className="grid gap-3 md:grid-cols-2">
-      <label className="text-sm font-medium">Ghana and benchmark long-term yields CSV<input className={field} required type="file" name="rates" accept=".csv,text/csv" aria-describedby="rate-help" /></label>
+      <label className="text-sm font-medium">Ghana and benchmark long-term yields CSV<input className={field} type="file" name="rates" accept=".csv,text/csv" aria-describedby="rate-help" /></label>
       <label className="block text-sm font-medium">Rate sources and comparability
-        <input className={field} required name="rateSource" maxLength={1000} placeholder="Ghana series, comparable regional series, tenor, observation convention" />
+        <input className={field} name="rateSource" maxLength={1000} placeholder="Ghana series, comparable regional series, tenor, observation convention" />
       </label>
       </div>}
       <label className="block text-sm font-medium">Energy price model
@@ -57,7 +57,14 @@ export function CalibrationForm({ start, end, benchmarks }: { start: number; end
         </div>
         <p className="text-sm text-zinc-700">Use an energy series that excludes separately modelled carbon charges. The operating cost share is a portfolio-wide modelling input. With no energy upload, the preview omits the separate energy channel.</p>
       </fieldset>}
-      <button className={btnClass} disabled={pending}>{pending ? 'Estimating coefficients and ECL…' : 'Run regression and save preview'}</button>
+      <div className="flex flex-wrap gap-3">
+        <button className={btnClass} disabled={pending}>{pending ? 'Estimating coefficients and ECL…' : 'Run regression and save preview'}</button>
+        {fitRate && <button type="submit" name="runWithoutYields" value="yes" disabled={pending}
+          className="rounded-md border border-lime-700 bg-white px-3 py-2 text-sm font-medium text-lime-900 hover:bg-lime-100 disabled:opacity-50">
+          Run without a yield file
+        </button>}
+      </div>
+      {fitRate && <p className="text-sm text-zinc-700">Running without a yield file fits GDP and inflation and uses the regional NGFS rate shock at ×1. The preview labels the rate shock uncalibrated.</p>}
       {state?.error && <p role="alert" className="text-sm text-red-700">{state.error}</p>}
     </form>
   );

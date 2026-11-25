@@ -174,10 +174,13 @@ export async function executeCalibration(form: FormData) {
     if (file instanceof File && file.size > 20000) throw new Error('Upload CSV files under 20 KB each.');
     return file instanceof File ? file.text() : '';
   };
-  const [rates, energyHistory, energyPath] = await Promise.all([csv('rates'), csv('energyHistory'), csv('energyPath')]);
-  const rateEvidence = readMatchedEvidence(rates, String(form.get('rateSource') ?? ''), start, end, 'rate');
+  const useRegionalRate = form.get('runWithoutYields') === 'yes' || form.get('rateModel') === 'regional';
+  const [rates, energyHistory, energyPath] = await Promise.all([useRegionalRate ? '' : csv('rates'), csv('energyHistory'), csv('energyPath')]);
+  const rateEvidence = useRegionalRate ? undefined : readMatchedEvidence(rates, String(form.get('rateSource') ?? ''), start, end, 'rate');
   const energyEvidence = readMatchedEvidence(energyHistory, String(form.get('energySource') ?? ''), start, end, 'energy');
-  if (form.get('rateModel') === 'matched' && !rateEvidence) throw new Error('Supply matched sovereign yields for the interest-rate regression.');
+  if (!useRegionalRate && form.get('rateModel') === 'matched' && !rateEvidence) {
+    throw new Error('Upload matched sovereign yields to fit the interest-rate model, or select Run without a yield file.');
+  }
   if (form.get('energyModel') === 'matched' && !energyEvidence) throw new Error('Supply matched historical energy prices for the energy regression.');
   const pathSource = String(form.get('energyPathSource') ?? '').trim();
   const shareInput = String(form.get('energyShare') ?? '').trim();
