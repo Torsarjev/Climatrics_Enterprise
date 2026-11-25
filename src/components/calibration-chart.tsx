@@ -2,8 +2,8 @@
 
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-export function CalibrationChart({ years, ghana, ssa, unit }: { years: readonly number[]; ghana: readonly number[]; ssa: readonly number[]; unit: string }) {
-  const data = years.map((y, i) => ({ year: y, Ghana: ghana[i], 'Sub-Saharan Africa': ssa[i] }));
+export function CalibrationChart({ years, ghana, ssa, unit, benchmark = 'Sub-Saharan Africa' }: { years: readonly number[]; ghana: readonly number[]; ssa: readonly number[]; unit: string; benchmark?: string }) {
+  const data = years.map((y, i) => ({ year: y, Ghana: ghana[i], regional: ssa[i] }));
   return (
     <div className="h-56">
       <ResponsiveContainer>
@@ -14,7 +14,7 @@ export function CalibrationChart({ years, ghana, ssa, unit }: { years: readonly 
           <Tooltip formatter={(v: number) => `${v.toFixed(1)}${unit}`} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <Line dataKey="Ghana" stroke="#c2410c" strokeWidth={2} dot={false} isAnimationActive={false} />
-          <Line dataKey="Sub-Saharan Africa" stroke="#1b2c3e" strokeWidth={2} dot={false} isAnimationActive={false} />
+          <Line dataKey="regional" name={benchmark} stroke="#1b2c3e" strokeWidth={2} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>

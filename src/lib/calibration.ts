@@ -1,5 +1,7 @@
 import { calibratedEnergy, type EnergyCalibration } from './calibration-energy';
 import { regressChanges } from './calibration-regression';
+import { BENCHMARKS, type Benchmark } from './regression-models';
+import { WDI_PEERS } from '@/data/wdi-peers';
 import { WORLD_BANK } from '@/data/worldbank';
 import { NGFS } from '@/data/ngfs';
 import { CCKP } from '@/data/cckp';
@@ -23,6 +25,7 @@ export interface CalibrationProfile {
   id: string;
   method?: typeof REGRESSION_VERSION | typeof BASELINE_VERSION;
   energy?: EnergyCalibration;
+  benchmarks?: Record<'gdp' | 'inflation', Benchmark>;
   rateBasis?: 'regression' | 'regional';
   settings: CalibrationSettings;
   coefficients: Record<'gdp' | 'inflation' | 'rate' | 'carbon', number>;
@@ -38,11 +41,16 @@ export function readRegressionWindow(form: FormData) {
   return { start, end };
 }
 
-export function wdiRegression(key: 'gdp' | 'inflation', start: number, end: number) {
+export function wdiRegression(key: 'gdp' | 'inflation', start: number, end: number, benchmark: Benchmark = 'SSF') {
   const series = WORLD_BANK.series[key];
+  const peer = WDI_PEERS[key];
+  const regional = benchmark === 'SSF' ? series.ssa : peer.values[benchmark];
   const observations = series.years.flatMap((year, index) => year >= start && year <= end
-    ? [{ year, ghana: series.ghana[index], regional: series.ssa[index] }] : []);
-  return { observations, fit: regressChanges(observations), indicator: series.indicator, source: series.url };
+    ? [{ year, ghana: series.ghana[index], regional: regional[index] }] : []);
+  return { observations, fit: regressChanges(observations), indicator: series.indicator, benchmark,
+    source: benchmark === 'SSF' ? series.url : peer.url,
+    lastUpdated: benchmark === 'SSF' ? series.lastUpdated : peer.lastUpdated,
+    retrieved: benchmark === 'SSF' ? WORLD_BANK.retrieved : '2026-11-25' };
 }
 
 const REGIONAL_RATE_BASELINE: CalibrationProfile = {
@@ -187,7 +195,7 @@ export function calibrationRows(key?: ScenarioKey, profile?: CalibrationProfile)
 export function calibrationMethod(v: Variable, profile?: CalibrationProfile) {
   if (!profile) return VARIABLES[v].method;
   if (profile.method === REGRESSION_VERSION || (profile.method && v === 'rate')) {
-    if (v === 'gdp' || v === 'inflation') return `Regional shock × OLS slope of Ghana annual changes on Sub-Saharan Africa annual changes, WDI ${profile.settings.start}–${profile.settings.end}. GDP retains the NGFS lookback of up to five years starting no earlier than 2025.`;
+    if (v === 'gdp' || v === 'inflation') return `Regional shock × OLS slope of Ghana annual changes on ${BENCHMARKS[profile.benchmarks?.[v] ?? 'SSF']} annual changes as a proxy for the NGFS region, WDI ${profile.settings.start}–${profile.settings.end}. GDP retains the NGFS lookback of up to five years starting no earlier than 2025.`;
     if (v === 'rate') return profile.rateBasis === 'regression'
       ? 'NiGEM regional rate shock × OLS slope estimated from the supplied matched long-term rate changes'
       : 'NiGEM regional rate shock carried through at ×1. No local rate sensitivity estimated.';
@@ -206,7 +214,7 @@ export function calibrationEvidence(profile?: CalibrationProfile) {
     physicalPathwayMapping: SSP_FOR, gdpLookbackYears: STRESS_WINDOW,
     transitionPolicyIndex: Object.fromEntries(GCB_PATHWAYS.map(({ key }) => [key, scenarioOf(key).transitionShock])),
     diagnostics: profile?.method === REGRESSION_VERSION
-      ? { gdp: wdiRegression('gdp', profile.settings.start, profile.settings.end), inflation: wdiRegression('inflation', profile.settings.start, profile.settings.end) }
+      ? { gdp: wdiRegression('gdp', profile.settings.start, profile.settings.end, profile.benchmarks?.gdp), inflation: wdiRegression('inflation', profile.settings.start, profile.settings.end, profile.benchmarks?.inflation) }
       : [evidence('gdp', profile?.settings), evidence('inflation', profile?.settings)],
     calibratedResults: calibrationRows(undefined, profile),
   };

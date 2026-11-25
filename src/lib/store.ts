@@ -12,6 +12,7 @@ import * as P from './params';
 import { sha256 } from './math';
 import { CALIBRATION_VERSION, REGRESSION_VERSION, activeCalibration, CalibrationProfile, calibrationEvidence, ghanaShocks, readRegressionWindow, wdiRegression } from './calibration';
 import { scenarioReporting } from './scenario-report';
+import { readBenchmark } from './regression-models';
 import { readMatchedEvidence } from './calibration-regression';
 import { calibratedEnergy, readEnergyPath } from './calibration-energy';
 import { GCB_PATHWAYS, isGcbScenarioYear } from './gcb-scenarios';
@@ -176,6 +177,8 @@ export async function executeCalibration(form: FormData) {
   const [rates, energyHistory, energyPath] = await Promise.all([csv('rates'), csv('energyHistory'), csv('energyPath')]);
   const rateEvidence = readMatchedEvidence(rates, String(form.get('rateSource') ?? ''), start, end, 'rate');
   const energyEvidence = readMatchedEvidence(energyHistory, String(form.get('energySource') ?? ''), start, end, 'energy');
+  if (form.get('rateModel') === 'matched' && !rateEvidence) throw new Error('Supply matched sovereign yields for the interest-rate regression.');
+  if (form.get('energyModel') === 'matched' && !energyEvidence) throw new Error('Supply matched historical energy prices for the energy regression.');
   const pathSource = String(form.get('energyPathSource') ?? '').trim();
   const shareInput = String(form.get('energyShare') ?? '').trim();
   if (Boolean(energyEvidence) !== Boolean(energyPath.trim()) || (!energyEvidence && (pathSource || shareInput))) {
@@ -195,10 +198,11 @@ export async function executeCalibration(form: FormData) {
   const loans = await loadDataset(data, dataset.id);
   validateScenarioLoans(loans);
 
+  const benchmarks = { gdp: readBenchmark(form.get('gdpBenchmark')), inflation: readBenchmark(form.get('inflationBenchmark')) };
   const settings = { start, end, rate: rateEvidence?.fit.beta ?? 1, carbon: 1 };
   const profile: CalibrationProfile = {
     id: `GH-${randomUUID()}`, method: REGRESSION_VERSION, rateBasis: rateEvidence ? 'regression' : 'regional',
-    ...(energy ? { energy } : {}), settings, coefficients: { gdp: wdiRegression('gdp', start, end).fit.beta, inflation: wdiRegression('inflation', start, end).fit.beta, rate: settings.rate, carbon: settings.carbon },
+    ...(energy ? { energy } : {}), benchmarks, settings, coefficients: { gdp: wdiRegression('gdp', start, end, benchmarks.gdp).fit.beta, inflation: wdiRegression('inflation', start, end, benchmarks.inflation).fit.beta, rate: settings.rate, carbon: settings.carbon },
     activatedBy: '', activatedAt: '',
   };
   const preview = GCB_PATHWAYS.flatMap(({ key: scenario, years }) => years.flatMap((year) =>
@@ -260,7 +264,7 @@ async function runParamsHash(input: RunInput) {
   const calibration = input.calibration;
   const profile = calibration?.method ? {
     id: calibration.id, method: calibration.method, rateBasis: calibration.rateBasis,
-    settings: calibration.settings, coefficients: calibration.coefficients, energy: calibration.energy,
+    settings: calibration.settings, coefficients: calibration.coefficients, energy: calibration.energy, benchmarks: calibration.benchmarks,
   } : calibration;
   return input.eclModel ? sha256(JSON.stringify({ base, eclModel: input.eclModel, transmission: P.TRANSMISSION, damage: P.DEPTH_DAMAGE, calibration: CALIBRATION_VERSION, CCKP, NGFS, WORLD_BANK, profile })) : base;
 }
