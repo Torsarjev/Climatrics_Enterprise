@@ -1,3 +1,4 @@
+import { hasMockPlaceholders } from './mock-disclosures';
 export const REGISTER_VERSION = 'engine-iv-2026.11.1';
 export const FRAMEWORKS = {
   s1: { title: 'IFRS S1', version: 'ISSB June 2023', uri: 'https://www.ifrs.org/issued-standards/ifrs-sustainability-standards-navigator/ifrs-s1-general-requirements/' },
@@ -90,7 +91,7 @@ export function disclosureGaps(row: DisclosureRow) {
   if (row.applicability === 'not-applicable') return row.rationale.trim() ? [] : ['Document applicability rationale'];
   return [
     ...(!row.owner.trim() ? ['Assign owner'] : []),
-    ...(!row.narrative.trim() ? ['Draft the disclosure'] : []),
+    ...(!row.narrative.trim() ? ['Draft the disclosure'] : hasMockPlaceholders(row.narrative) ? ['Replace mock disclosure placeholders'] : []),
     ...row.requirement.evidence.filter((kind) => !row.evidence.some((item) => item.kind === kind)).map((kind) => EVIDENCE_KIND[kind]),
   ];
 }
