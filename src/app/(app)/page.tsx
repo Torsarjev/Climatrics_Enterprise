@@ -21,7 +21,7 @@ const Kpi = ({ label, value, sub, href }: { label: string; value: string; sub: s
 const ENGINES: [string, string, string[][]][] = [
   ['I', 'ESMS & SDG screening', [['/screening', 'Screening'], ['/alignment', 'SDG & taxonomy']]],
   ['II', 'Geospatial physical risk', [['/physical', 'Physical risk']]],
-  ['III', 'NGFS scenarios, ECL, ICAAP & ILAAP', [['/stress', 'Stress test'], ['/capital', 'ICAAP & ILAAP']]],
+  ['III', 'NGFS scenarios, ECL, Climate ICAAP & ILAAP', [['/stress', 'Stress test'], ['/capital', 'Climate ICAAP & ILAAP']]],
   ['IV', 'IFRS S1/S2 & Bank of Ghana evidence', [['/disclosure', 'Disclosure'], ['/reports', 'Reports']]],
   ['V', 'Financed emissions (PCAF)', [['/emissions', 'Emissions'], ['/transition', 'Transition risk']]],
   ['VI', 'Governance', [['/governance', 'Governance'], ['/data', 'Data lineage']]],

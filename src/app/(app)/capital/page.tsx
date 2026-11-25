@@ -4,6 +4,7 @@ import { IcaapWorkspace } from '@/components/icaap-workspace';
 import { currentUser, db, getRun } from '@/lib/store';
 import { BANK, scenarioOf } from '@/lib/params';
 import { Card, Illustrative, PageHead, Table } from '@/components/ui';
+import { RunApproval } from '@/components/run-approval';
 import { EvidenceCards } from '@/components/evidence-cards';
 import { ghs, pct, pp } from '@/lib/fmt';
 
@@ -20,7 +21,7 @@ export default async function CapitalPage({ searchParams }: { searchParams: Prom
   }
   const id = runId;
   const found = id ? await getRun(id) : null;
-  if (!found) return (<><PageHead area="ICAAP" title="ICAAP" /><p className="text-sm text-zinc-600">No stress runs yet. <Link href="/stress" className="underline">Run one first</Link>.</p></>);
+  if (!found) return (<><PageHead area="Climate ICAAP" title="Climate ICAAP" /><p className="text-sm text-zinc-600">No stress runs yet. <Link href="/stress" className="underline">Run one first</Link>.</p></>);
   const { rec, run } = found;
   const C = run.capital;
   const minimumCapital = C.minimum * C.rwaAfter;
@@ -34,7 +35,8 @@ export default async function CapitalPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageHead area="ICAAP" title="Capital adequacy" intro={`Engine III point-in-time bridge using ${rec.id}: ${scenarioOf(rec.input.scenario).name}, ${rec.input.horizon}.`}><Link href={`/runs/${rec.id}`} className="text-sm underline">Source scenario run</Link><Link href="/capital" className="text-sm underline">Climate ICAAP workspace</Link><Link href={`/liquidity?run=${rec.id}`} className="text-sm underline">ILAAP</Link></PageHead>
+      <PageHead area="Climate ICAAP" title="Capital adequacy" intro={`Engine III point-in-time bridge using ${rec.id}: ${scenarioOf(rec.input.scenario).name}, ${rec.input.horizon}.`}><Link href={`/runs/${rec.id}`} className="text-sm underline">Source scenario run</Link><Link href="/capital" className="text-sm underline">Climate ICAAP workspace</Link><Link href={`/liquidity?run=${rec.id}`} className="text-sm underline">ILAAP</Link></PageHead>
+      <RunApproval rec={rec} figures="capital" />
       <EvidenceCards key={rec.id} label="Capital metrics" items={[
         { id: 'car', label: 'Total capital ratio', value: `${pct(C.carBefore)} → ${pct(C.carAfter)}`, sub: pp(C.carAfter - C.carBefore),
           evidence: <><p>Total capital ÷ risk-weighted assets for each assessment. Climate provisions reduce capital by {amount(C.capitalBefore - C.capitalAfter)} after the modelled tax effect.</p>{capitalRows(C.capitalBefore, C.capitalAfter)}{source}</> },
@@ -45,7 +47,7 @@ export default async function CapitalPage({ searchParams }: { searchParams: Prom
         { id: 'shortfall', label: 'Capital shortfall', value: shortfall > 0 ? ghs(shortfall) : 'None', sub: 'To restore the model minimum',
           evidence: <><p>Required capital equals {pct(C.minimum)} × stressed RWA of {amount(C.rwaAfter)} = {amount(minimumCapital)}. Any excess over available stressed capital of {amount(C.capitalAfter)} is the shortfall. Result {amount(shortfall)}.</p>{source}</> },
       ]} />
-      <Card title="ICAAP capital bridge" className="mt-6">
+      <Card title="Climate ICAAP capital bridge" className="mt-6">
           <Table head={['Item', 'GHS']} align={['l', 'r']} rows={[
             ['Regulatory capital (CET1 + Tier 2)', ghs(C.capitalBefore)],
             ['− After-tax provision impact on capital', ghs(C.capitalAfter - C.capitalBefore)],
