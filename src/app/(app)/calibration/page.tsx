@@ -1,3 +1,4 @@
+import { BENCHMARKS, REGRESSION_MODELS, regressionEquation } from '@/lib/regression-models';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { SCENARIOS, ScenarioKey, scenarioOf } from '@/lib/params';
@@ -35,10 +36,10 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
   const fits = snapshot && !Array.isArray(snapshot) ? snapshot : undefined;
   const isRegression = profile?.method === REGRESSION_VERSION;
   const regression = isRegression ? [
-    ['GDP', fits?.gdp.fit ?? wdiRegression('gdp', settings.start, settings.end).fit],
-    ['Inflation', fits?.inflation.fit ?? wdiRegression('inflation', settings.start, settings.end).fit],
-    ['Long-term rate', execution?.rateEvidence?.fit],
-    ['Energy price', execution?.energyEvidence?.fit],
+    ['gdp', fits?.gdp.fit ?? wdiRegression('gdp', settings.start, settings.end, profile?.benchmarks?.gdp).fit, BENCHMARKS[profile?.benchmarks?.gdp ?? 'SSF']],
+    ['inflation', fits?.inflation.fit ?? wdiRegression('inflation', settings.start, settings.end, profile?.benchmarks?.inflation).fit, BENCHMARKS[profile?.benchmarks?.inflation ?? 'SSF']],
+    ['rate', execution?.rateEvidence?.fit, 'Uploaded benchmark'],
+    ['energy', execution?.energyEvidence?.fit, 'Uploaded benchmark'],
   ] as const : undefined;
   return (
     <>
@@ -51,7 +52,7 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
         <p className="mb-4 text-sm text-zinc-700">Active in Scenario Analysis · {active.id} {active.activatedAt && `· ${active.activatedBy} · ${when(active.activatedAt)}`}</p>
         {saved ? (
           <p className="text-sm"><Link className="underline" href={`/runs/${saved.id}`}>{saved.id}</Link> used {profile?.id ?? CALIBRATION_VERSION} · Rate ×{settings.rate.toFixed(4)} · Carbon ×{settings.carbon}. <Link href="/calibration" className="underline">Open active calibration</Link></p>
-        ) : mayRun && <CalibrationForm start={settings.start} end={settings.end} />}
+        ) : mayRun && <CalibrationForm start={settings.start} end={settings.end} benchmarks={profile?.benchmarks} />}
         <Link href="/stress" className="mt-4 inline-block text-sm font-medium underline">Open Scenario Analysis</Link>
       </Card>
 
@@ -75,10 +76,19 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
         {!saved && mayRun && !execution.decision && <CalibrationDecision id={execution.profile.id} stale={active.id !== execution.comparison.id || data.activeDataset !== execution.dataset.id} />}
       </Card>}
 
-      {regression && <Card title="Regression coefficients" className="mb-6">
+      {regression && <Card title="Estimated regression equations" className="mb-6">
+        <p className="mb-3 text-sm text-zinc-700">Ghana is the dependent variable. The selected benchmark is the independent variable. ε denotes the residual. The scenario uses the slope to scale the shock so a zero shock stays zero.</p>
+        <div className="mb-4 grid gap-3 lg:grid-cols-2">
+          {regression.map(([key, fit, benchmark]) => <section key={key} className="rounded-lg border border-lime-200 bg-lime-50 p-3 text-sm">
+            <h3 className="font-semibold">{REGRESSION_MODELS[key].label}</h3>
+            <p className="mt-1 break-words font-mono">{fit ? regressionEquation(key, benchmark, fit) : key === 'rate' ? 'No yield regression estimated · regional rate shock ×1.' : 'No energy regression estimated · matched history and scenario energy path required.'}</p>
+            <p className="mt-2">{REGRESSION_MODELS[key].purpose}</p>
+          </section>)}
+        </div>
         <Table head={['Variable', 'Applied coefficient', 'OLS intercept', 'R²', 'Slope std. error', 'Annual changes']}
-          rows={regression.map(([label, fit], index) => {
-            const coefficient = index === 3 ? profile?.energy?.beta : profile?.coefficients[(['gdp', 'inflation', 'rate'] as const)[index]];
+          rows={regression.map(([key, fit]) => {
+            const label = REGRESSION_MODELS[key].label;
+            const coefficient = key === 'energy' ? profile?.energy?.beta : profile?.coefficients[key];
             if (coefficient === undefined) return [label, 'Data unavailable', '—', '—', '—', '—'];
             return [label, fit ? coefficient.toFixed(4) : profile?.rateBasis === 'regional' ? '1.0000 · regional' : coefficient.toFixed(4),
               fit?.alpha.toFixed(4) ?? '—', fit?.r2?.toFixed(3) ?? '—', fit?.standardError.toFixed(4) ?? '—', fit?.n ?? '—'];
@@ -104,7 +114,7 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
 
       <Card title="Method">
         <p className="rounded-md bg-zinc-50 px-3 py-2 font-mono text-sm">Calibrated Ghana shock = NGFS regional shock × Ghana sensitivity coefficient</p>
-        <p className="mt-3 text-sm text-zinc-700">{isRegression ? <>For GDP and inflation, ordinary least squares estimates the slope of Ghana’s annual changes on Sub-Saharan Africa’s annual changes. A rate upload uses the same method on matched long-term yields. Energy regression uses annual log price changes. The slope scales the log of the NGFS price ratio, which is converted back to a percentage deviation. Only the fitted slope scales the NGFS shock, so a zero regional shock stays zero. The intercept, R² and standard error describe the historical fit. A signed slope can reverse a shock, so review the preview and fit before activating. Ghana’s historical co-movement is an empirical proxy for scenario transmission.</> : <>For GDP and inflation the coefficient is <b>σ(year-on-year change in Ghana) ÷ σ(year-on-year change in Sub-Saharan Africa)</b>, estimated on World Bank data for {ev[0].from}–{ev[0].to}. The ratio scales the magnitude of the regional shocks and preserves their sign. The regression slope and R² are diagnostics.</>} GDP uses the change in the interpolated deviation over up to five years, with 2025 as the earliest starting point. Other macro and carbon values use the selected reporting year.</p>
+        <p className="mt-3 text-sm text-zinc-700">{isRegression ? <>For GDP and inflation, ordinary least squares estimates the slope of Ghana’s annual changes on the selected benchmark’s annual changes. A peer-country coefficient assumes that historical co-movement is an appropriate proxy for the NGFS regional shock. A rate upload uses the same method on matched long-term yields. Energy regression uses annual log price changes. The slope scales the log of the NGFS price ratio, which is converted back to a percentage deviation. Only the fitted slope scales the NGFS shock, so a zero regional shock stays zero. The intercept, R² and standard error describe the historical fit. A signed slope can reverse a shock, so review the preview and fit before activating. Ghana’s historical co-movement is an empirical proxy for scenario transmission.</> : <>For GDP and inflation the coefficient is <b>σ(year-on-year change in Ghana) ÷ σ(year-on-year change in Sub-Saharan Africa)</b>, estimated on World Bank data for {ev[0].from}–{ev[0].to}. The ratio scales the magnitude of the regional shocks and preserves their sign. The regression slope and R² are diagnostics.</>} GDP uses the change in the interpolated deviation over up to five years, with 2025 as the earliest starting point. Other macro and carbon values use the selected reporting year.</p>
         <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm md:grid-cols-3">
           <div><dt className="text-zinc-500">NGFS release</dt><dd>{NGFS_RELEASE}</dd></div>
           <div><dt className="text-zinc-500">Region</dt><dd>{NGFS_REGION}</dd></div>
@@ -115,10 +125,12 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         {ev.map((e) => {
           const s = WORLD_BANK.series[e.key];
-          const sample = s.years.flatMap((year, index) => year >= e.from && year <= e.to ? [[year, s.ghana[index], s.ssa[index]]] : []);
+          const selectedFit = fits?.[e.key];
+          const benchmark = BENCHMARKS[profile?.benchmarks?.[e.key] ?? 'SSF'];
+          const sample = selectedFit ? selectedFit.observations.map(({ year, ghana, regional }) => [year, ghana, regional]) : s.years.flatMap((year, index) => year >= e.from && year <= e.to ? [[year, s.ghana[index], s.ssa[index]]] : []);
           return (
             <Card key={e.key} title={`Source data · ${e.key === 'gdp' ? 'GDP' : 'Inflation'}`} note={`World Bank ${e.indicator}`}>
-              <CalibrationChart years={sample.map(([year]) => year)} ghana={sample.map(([, value]) => value)} ssa={sample.map(([, , value]) => value)} unit="%" />
+              <CalibrationChart years={sample.map(([year]) => year)} ghana={sample.map(([, value]) => value)} ssa={sample.map(([, , value]) => value)} unit="%" benchmark={benchmark} />
               {!isRegression && <Table head={['Measure', 'Value']} align={['l', 'r']} rows={[
                 ['σ of year-on-year change, Ghana', `${e.sdGhana.toFixed(2)} pp`],
                 ['σ of year-on-year change, Sub-Saharan Africa', `${e.sdRegion.toFixed(2)} pp`],
@@ -128,9 +140,9 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
               ]} />}
               <details className="my-3 text-sm">
                 <summary className="cursor-pointer font-medium">View annual WDI observations</summary>
-                <Table head={['Year', 'Ghana (%)', 'Sub-Saharan Africa (%)']} rows={sample.map(([year, ghana, region]) => [year, ghana.toFixed(4), region.toFixed(4)])} />
+                <Table head={['Year', 'Ghana (%)', `${benchmark} (%)`]} rows={sample.map(([year, ghana, region]) => [year, ghana.toFixed(4), region.toFixed(4)])} />
               </details>
-              <p className="mt-2 text-xs text-zinc-500"><a href={e.url} className="underline" target="_blank" rel="noreferrer">World Bank WDI API</a> · series updated {e.lastUpdated} · extracted {WORLD_BANK.retrieved}</p>
+              <p className="mt-2 text-xs text-zinc-500"><a href={selectedFit?.source ?? e.url} className="underline" target="_blank" rel="noreferrer">World Bank WDI API</a> · series updated {selectedFit?.lastUpdated ?? e.lastUpdated} · extracted {selectedFit?.retrieved ?? WORLD_BANK.retrieved}</p>
             </Card>
           );
         })}
