@@ -69,7 +69,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <section>
           <h3 className="mb-2 text-sm font-semibold">3. Credit impact</h3>
           <Table head={['Metric', 'Base', 'Stressed']} align={['l', 'r', 'r']} rows={[
-            ['Weighted PD (performing)', pct(S.pd, 2), pct(S.pdStressed, 2)], ['Weighted LGD', pct(S.lgd), pct(S.lgdStressed)], ['Expected credit loss', ghs(S.ecl), ghs(S.eclStressed)],
+            ['Weighted PD (performing)', pct(S.pd, 2), pct(S.pdStressed, 2)], ['Weighted LGD', pct(S.lgd), pct(S.lgdStressed)], [rec.input.eclModel ? 'Stage-based discounted ECL' : 'Legacy one-year ECL', ghs(S.ecl), ghs(S.eclStressed)],
             ['Stage 2 exposure', ghs(S.stages[1].before), ghs(S.stages[1].after)], ['Stage 3 exposure', ghs(S.stages[2].before), ghs(S.stages[2].after)],
             ['Credit VaR 99.9%', ghs(L.base.var999), ghs(L.stressed.var999)], ['Economic capital', ghs(L.base.economicCapital), ghs(L.stressed.economicCapital)],
           ]} />

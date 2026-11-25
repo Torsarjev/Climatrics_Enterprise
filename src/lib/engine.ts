@@ -1,12 +1,13 @@
-import { BANK, COLLATERAL, CREDIT, HAZARDS, Hazard, Horizon, LOSS_DIST, MODEL_VERSION, REGIONS, SECTORS, ScenarioKey, sectorOf } from './params';
+import { BANK, COLLATERAL, CREDIT, HAZARDS, Hazard, LOSS_DIST, MODEL_VERSION, REGIONS, SECTORS, ScenarioKey, TRANSMISSION, sectorOf } from './params';
 import { Loan } from './portfolio';
 import { normalizeTransitionIntensity, transitionScoreFromInputs, type TransitionScoreInputs } from './transition-model';
 import { clamp, normCdf, normInv, normal, rng } from './math';
 import { GhanaShocks, ghanaShocks } from './calibration';
+import { STAGED_ECL_MODEL, stagedEcl } from './staged-ecl';
 import { BottomUpTrace, SectorStress, bottomUp, topDownSectors } from './transmission';
 
 export type Approach = 'bottom-up' | 'top-down';
-export interface RunInput { scenario: ScenarioKey; horizon: Horizon; approach: Approach }
+export interface RunInput { scenario: ScenarioKey; horizon: number; approach: Approach; eclModel?: typeof STAGED_ECL_MODEL }
 
 export interface LoanResult {
   id: string; borrower: string; sector: string; region: string; ead: number;
@@ -71,17 +72,21 @@ export function runCredit(loans: Loan[], input: RunInput) {
       ({ pdS, lgdS, trace } = bottomUp(l, G));
     }
     const stageS = l.stage === 3 || pdS >= CREDIT.stage3Pd ? 3 : l.stage === 2 || (pdS >= l.pd * CREDIT.sicrMultiple && pdS - l.pd >= CREDIT.sicrAbsolute) ? 2 : 1;
+    const newModel = input.eclModel === STAGED_ECL_MODEL;
+    const maturity = l.maturityYears;
+    const rate = TRANSMISSION.lendingRate;
     return {
       id: l.id, borrower: l.borrower, sector: l.sector, region: l.region, ead: l.ead,
       physical: p.score, physicalDrivers: p.drivers, transition: transitionScore(l, G.transition),
       pd: l.pd, pdStressed: pdS, lgd: l.lgd, lgdStressed: lgdS, haircut: collateralHaircut(l, phys),
       stage: l.stage, stageStressed: stageS,
-      ecl: ecl(l.pd, l.lgd, l.ead), eclStressed: ecl(pdS, lgdS, l.ead),
+      ecl: newModel ? stagedEcl({ stage: l.stage, pd: l.pd, lgd: l.lgd, ead: l.ead, maturity, rate }).total : ecl(l.pd, l.lgd, l.ead),
+      eclStressed: newModel ? stagedEcl({ stage: stageS, pd: pdS, lgd: lgdS, ead: l.ead, maturity, rate }).total : ecl(pdS, lgdS, l.ead),
       trace, sectorUplift,
     };
   });
 
-  return { input, modelVersion: MODEL_VERSION, shocks: G, sectors, results, summary: summarise(results), capital: capitalImpact(results), liquidity: liquidityImpact(results, phys) };
+  return { input, modelVersion: input.eclModel ?? MODEL_VERSION, shocks: G, sectors, results, summary: summarise(results), capital: capitalImpact(results), liquidity: liquidityImpact(results, phys) };
 }
 
 function summarise(rs: LoanResult[]) {
@@ -89,7 +94,7 @@ function summarise(rs: LoanResult[]) {
   const ead = sum((r) => r.ead);
   const migration = GRADES.map(() => GRADES.map(() => 0));
   rs.forEach((r) => { migration[gradeOf(r.pd)][gradeOf(r.pdStressed)] += r.ead; });
-  const stages = [1, 2, 3].map((s) => ({ stage: s, before: sum((r) => (r.stage === s ? r.ead : 0)), after: sum((r) => (r.stageStressed === s ? r.ead : 0)) }));
+  const stages = [1, 2, 3].map((s) => ({ stage: s, before: sum((r) => (r.stage === s ? r.ead : 0)), after: sum((r) => (r.stageStressed === s ? r.ead : 0)), ecl: sum((r) => r.stage === s ? r.ecl : 0), eclStressed: sum((r) => r.stageStressed === s ? r.eclStressed : 0) }));
   const perf = (xs: LoanResult[], f: (r: LoanResult) => number) => { const p = xs.filter((r) => r.pd < 1), w = p.reduce((a, r) => a + r.ead, 0); return w ? p.reduce((a, r) => a + f(r) * r.ead, 0) / w : 0; };
   const bySector = SECTORS.map((s) => {
     const xs = rs.filter((r) => r.sector === s.key);
@@ -98,6 +103,7 @@ function summarise(rs: LoanResult[]) {
       key: s.key, name: s.name, ead: xs.reduce((a, r) => a + r.ead, 0),
       ecl: xs.reduce((a, r) => a + r.ecl, 0), eclStressed: xs.reduce((a, r) => a + r.eclStressed, 0),
       pd: perf(xs, (r) => r.pd), pdStressed: perf(xs, (r) => r.pdStressed),
+      lgd: xs.reduce((a, r) => a + r.lgd * r.ead, 0) / e, lgdStressed: xs.reduce((a, r) => a + r.lgdStressed * r.ead, 0) / e,
       physical: xs.reduce((a, r) => a + r.physical * r.ead, 0) / e, transition: xs.reduce((a, r) => a + r.transition * r.ead, 0) / e,
     };
   });
@@ -109,9 +115,9 @@ function summarise(rs: LoanResult[]) {
   return {
     ead, loans: rs.length,
     ecl: sum((r) => r.ecl), eclStressed: sum((r) => r.eclStressed),
-    pd: sum((r) => (r.pd < 1 ? r.pd * r.ead : 0)) / sum((r) => (r.pd < 1 ? r.ead : 0)),
-    pdStressed: sum((r) => (r.pd < 1 ? r.pdStressed * r.ead : 0)) / sum((r) => (r.pd < 1 ? r.ead : 0)),
-    lgd: sum((r) => r.lgd * r.ead) / ead, lgdStressed: sum((r) => r.lgdStressed * r.ead) / ead,
+    pd: perf(rs, (r) => r.pd),
+    pdStressed: perf(rs, (r) => r.pdStressed),
+    lgd: sum((r) => r.lgd * r.ead) / (ead || 1), lgdStressed: sum((r) => r.lgdStressed * r.ead) / (ead || 1),
     migration, stages, bySector, byRegion,
   };
 }

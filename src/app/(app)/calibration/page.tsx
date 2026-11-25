@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { SCENARIOS, ScenarioKey, scenarioOf } from '@/lib/params';
 import { CALIBRATION_VERSION, NGFS_REGION, NGFS_RELEASE, VARIABLES, calibrationRows, evidence } from '@/lib/calibration';
+import { GCB_PATHWAYS } from '@/lib/gcb-scenarios';
 import { WORLD_BANK } from '@/data/worldbank';
 import { Badge, Card, Illustrative, PageHead, Table } from '@/components/ui';
 import { CalibrationChart } from '@/components/calibration-chart';
@@ -17,7 +18,7 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
 
   return (
     <>
-      <PageHead area="Engine III · Ghana scenario calibration" title="Ghana-calibrated NGFS scenarios" intro="NGFS publishes scenario paths for model regions, not for Ghana. Each regional shock is translated into a Ghana shock with a documented, data-driven coefficient. Both the top-down and bottom-up stress tests read these calibrated values." >
+      <PageHead area="Engine III · Ghana scenario calibration" title="Ghana-calibrated NGFS scenarios" intro="NGFS publishes scenario paths for model regions, not for Ghana. Each regional shock is translated into a Ghana shock with a documented, data-driven coefficient. Both credit approaches use these values. Annual NGFS values between five-year observations are linearly interpolated." >
         <a href="/api/calibration" className="rounded-md px-3 py-1.5 text-sm text-zinc-700 ring-1 ring-zinc-300 hover:bg-zinc-100">Download full table (CSV)</a>
       </PageHead>
 
@@ -52,7 +53,7 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
 
       <Card title="Calibration table" className="mt-6" note={`${scenarioOf(key).name} · ${scenarioOf(key).family}`}>
         <div className="mb-3 flex flex-wrap gap-2 text-sm">
-          {SCENARIOS.map((s) => <Link key={s.key} href={`/calibration?scenario=${s.key}`} className={`rounded-md px-2.5 py-1 ring-1 ${s.key === key ? 'bg-[#1b2c3e] text-white ring-[#1b2c3e]' : 'ring-zinc-300 hover:bg-zinc-100'}`}>{s.name}</Link>)}
+          {GCB_PATHWAYS.map((s) => <Link key={s.key} href={`/calibration?scenario=${s.key}`} className={`rounded-md px-2.5 py-1 ring-1 ${s.key === key ? 'bg-[#1b2c3e] text-white ring-[#1b2c3e]' : 'ring-zinc-300 hover:bg-zinc-100'}`}>{s.name}</Link>)}
         </div>
         <Table head={['Year', 'Variable', 'NGFS / CCKP source value', 'Regional shock', 'Ghana coefficient', 'Calibrated Ghana shock', 'Validation status', 'Version']} align={['l', 'l', 'l', 'r', 'r', 'r', 'l', 'l']}
           rows={rows.map((r) => [r.year, r.variable, <span key="src" className="text-xs">{r.source}</span>, fmt(r.regional, r.unit), r.coefficient.toFixed(2), <b key="g">{fmt(r.ghana, r.unit)}</b>, <span key="s" className="text-xs">{r.status}</span>, r.version])} />
