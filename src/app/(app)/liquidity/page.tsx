@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { db, getRun } from '@/lib/store';
+import { notFound } from 'next/navigation';
+import { IlaapWorkspace } from '@/components/ilaap-workspace';
+import { currentUser, db, getRun } from '@/lib/store';
 import { scenarioOf } from '@/lib/params';
 import { Card, Illustrative, PageHead, Table } from '@/components/ui';
 import { EvidenceCards } from '@/components/evidence-cards';
@@ -8,10 +10,15 @@ import { ghs, pct, pp } from '@/lib/fmt';
 
 export const dynamic = 'force-dynamic';
 
-export default async function LiquidityPage({ searchParams }: { searchParams: Promise<{ run?: string }> }) {
-  const { run: runId } = await searchParams;
-  const { runs } = await db();
-  const id = runId ?? runs.find((run) => run.status === 'approved')?.id ?? runs[0]?.id;
+export default async function LiquidityPage({ searchParams }: { searchParams: Promise<{ run?: string; assessment?: string; view?: string }> }) {
+  const { run: runId, assessment, view } = await searchParams;
+  const { runs, ilaap = [] } = await db();
+  if (!runId) {
+    const selected = assessment ? ilaap.find((item) => item.id === assessment) : ilaap[0];
+    if (assessment && !selected) notFound();
+    return <IlaapWorkspace assessment={selected} history={ilaap} view={view} user={await currentUser()} />;
+  }
+  const id = runId;
   const found = id ? await getRun(id) : null;
   if (!found) return <><PageHead area="Climate ILAAP" title="Liquidity adequacy" /><p className="text-sm">No scenario run is available. <Link href="/stress" className="underline">Open scenario analysis</Link>.</p></>;
   const { run, rec } = found;
@@ -25,6 +32,7 @@ export default async function LiquidityPage({ searchParams }: { searchParams: Pr
   return <>
     <PageHead area="Climate ILAAP" title="Liquidity adequacy" intro={`Liquidity assessment using ${rec.id}: ${scenarioOf(rec.input.scenario).name}, ${rec.input.horizon}.`}>
       <Link href={`/runs/${rec.id}`} className="text-sm underline">Source scenario run</Link>
+      <Link href="/liquidity" className="text-sm underline">Climate ILAAP workspace</Link>
     </PageHead>
     <RunApproval rec={rec} figures="liquidity" />
     <EvidenceCards key={rec.id} label="Liquidity metrics" items={[
