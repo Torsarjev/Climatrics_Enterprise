@@ -3,8 +3,7 @@
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { readCalibration } from '@/lib/calibration';
-import { USERS, activateCalibration, mfaEnrolledAt, setMfaEnrolled, attachEvidence, audit, createScenarioBatch, createScreenRun, ingest, reproduce, review, reviewScreenRun, sessionUser } from '@/lib/store';
+import { USERS, executeCalibration, decideCalibration, mfaEnrolledAt, setMfaEnrolled, attachEvidence, audit, createScenarioBatch, createScreenRun, ingest, reproduce, review, reviewScreenRun, sessionUser } from '@/lib/store';
 import { savePortfolioScreening } from '@/lib/esg/portfolio';
 import type { ScreenInput } from '@/lib/esg/engine';
 import { ACCOUNTS, MFA_COOKIE, SESSION_COOKIE, authConfigured, checkPassword, clearFails, createMfaPending, createSession, lockedFor, mfaRequired, readMfaPending, recordFail, verifyTotp } from '@/lib/auth';
@@ -89,15 +88,27 @@ export async function ingestAction(_: unknown, form: FormData) {
   return { ok: true };
 }
 
-export async function activateCalibrationAction(_: unknown, form: FormData) {
+export async function executeCalibrationAction(_: unknown, form: FormData) {
+  let id: string;
   try {
-    await activateCalibration(readCalibration((key) => form.get(key)));
+    id = await executeCalibration(form);
   } catch (e) {
     return { error: (e as Error).message };
   }
-  revalidatePath('/calibration');
+  redirect(`/calibration?version=${id}`);
+}
+
+export async function decideCalibrationAction(_: unknown, form: FormData) {
+  const id = String(form.get('version') ?? '');
+  const decision = form.get('decision');
+  if (decision !== 'activate' && decision !== 'decline') return { error: 'Choose a calibration decision.' };
+  try {
+    await decideCalibration(id, decision, String(form.get('note') ?? '').trim());
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
   revalidatePath('/stress');
-  redirect('/calibration');
+  redirect(`/calibration?version=${id}`);
 }
 
 export async function runAction(_: unknown, form: FormData) {

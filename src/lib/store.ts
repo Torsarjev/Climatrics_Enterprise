@@ -5,14 +5,15 @@ import { redirect } from 'next/navigation';
 import { SESSION_COOKIE, readSession } from './auth';
 import { demoExtract, Loan } from './portfolio';
 import { ingestCsv, IngestResult } from './ingest';
-import { physicalScore, runStress, RunInput, StressRun } from './engine';
+import { physicalScore, runCredit, runStress, RunInput, StressRun } from './engine';
 import { ScreenInput, type ScreenResult, neededEvidence, screen, validate } from './esg/engine';
 import { CRITERIA, FRAMEWORK_VERSIONS, QUESTIONS } from './esg/rules';
 import * as P from './params';
 import { sha256 } from './math';
-import { CALIBRATION_VERSION, CalibrationProfile, CalibrationSettings, calibrationCoefficients, ghanaShocks } from './calibration';
+import { CALIBRATION_VERSION, REGRESSION_VERSION, activeCalibration, CalibrationProfile, calibrationEvidence, ghanaShocks, readRegressionWindow, wdiRegression } from './calibration';
 import { scenarioReporting } from './scenario-report';
-import { isGcbScenarioYear } from './gcb-scenarios';
+import { readRateEvidence } from './calibration-regression';
+import { GCB_PATHWAYS, isGcbScenarioYear } from './gcb-scenarios';
 import { MAX_ECL_MATURITY, STAGED_ECL_MODEL } from './staged-ecl';
 import { onNetlify, readText, updateExistingBlob, writeText } from './kv';
 import { CCKP } from '@/data/cckp';
@@ -42,7 +43,31 @@ export interface ScreenRunRecord {
   status: 'draft' | 'submitted' | 'approved' | 'escalated' | 'returned';
   verifiedEvidence?: string[]; submittedBy?: string; reviewedBy?: string; reviewedAt?: string; note?: string;
 }
-interface Db { calibration?: CalibrationProfile; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
+interface CalibrationPreviewRow {
+  scenario: P.ScenarioKey;
+  year: number;
+  approach: RunInput['approach'];
+  baselineEcl: number;
+  activeEcl: number;
+  candidateEcl: number;
+  activeShocks: ReturnType<typeof ghanaShocks>;
+  candidateShocks: ReturnType<typeof ghanaShocks>;
+}
+
+export interface CalibrationExecution {
+  profile: CalibrationProfile;
+  comparison: CalibrationProfile;
+  createdAt: string;
+  createdBy: string;
+  dataset: { id: string; name: string; hash: string; facilities: number };
+  modelFingerprint: string;
+  evidence: ReturnType<typeof calibrationEvidence>;
+  rateEvidence?: ReturnType<typeof readRateEvidence>;
+  preview: CalibrationPreviewRow[];
+  decision?: { action: 'activate' | 'decline'; by: string; at: string; note: string };
+}
+
+interface Db { calibration?: CalibrationProfile; calibrationExecutions?: CalibrationExecution[]; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
 
 const g = globalThis as unknown as { __db?: Db; __loans?: Map<string, Loan[]>; __runs?: Map<string, StressRun> };
 g.__loans ??= new Map();
@@ -128,18 +153,7 @@ export async function getRun(id: string, includeLoans = false) {
 
 const outHash = (run: StressRun) => sha256(JSON.stringify(run.results.map((r) => [r.id, r.pdStressed.toFixed(8), r.lgdStressed.toFixed(8), r.eclStressed.toFixed(2)])) + JSON.stringify(run.lossDist.stressed.var999));
 
-export async function activateCalibration(settings: CalibrationSettings) {
-  const user = await currentUser();
-  if (!user.can.includes('run' as never)) throw new Error('Your role cannot activate a Ghana calibration.');
-  const profile: CalibrationProfile = {
-    id: `GH-${randomUUID()}`, settings, coefficients: calibrationCoefficients(settings),
-    activatedBy: user.name, activatedAt: now(),
-  };
-  const apply = (current: Db): Db => ({
-    ...current, calibration: profile,
-    audit: [{ at: profile.activatedAt, by: user.name, action: 'calibration.activated', target: profile.id,
-      detail: JSON.stringify({ settings, coefficients: profile.coefficients }) }, ...current.audit],
-  });
+async function updateCalibrationStore(apply: (current: Db) => Db) {
   const current = await db();
   if (onNetlify) {
     await updateExistingBlob('store.json', (data) => JSON.stringify(apply(JSON.parse(data) as Db), null, 1));
@@ -148,9 +162,87 @@ export async function activateCalibration(settings: CalibrationSettings) {
   }
 }
 
+export async function executeCalibration(form: FormData) {
+  const user = await currentUser();
+  if (!user.can.includes('run' as never)) throw new Error('Your role cannot execute calibrations.');
+  const { start, end } = readRegressionWindow(form);
+  const file = form.get('rates');
+  if (file instanceof File && file.size > 20000) throw new Error('Upload a rate CSV under 20 KB.');
+  const rateEvidence = readRateEvidence(file instanceof File ? await file.text() : '', String(form.get('rateSource') ?? ''), start, end);
+  const data = await db();
+  const comparison = activeCalibration(data.calibration);
+  const dataset = data.datasets.find((item) => item.id === data.activeDataset)!;
+  const loans = await loadDataset(data, dataset.id);
+  validateScenarioLoans(loans);
+
+  const settings = { start, end, rate: rateEvidence?.fit.beta ?? 1, carbon: 1 };
+  const profile: CalibrationProfile = {
+    id: `GH-${randomUUID()}`, method: REGRESSION_VERSION, rateBasis: rateEvidence ? 'regression' : 'regional',
+    settings, coefficients: { gdp: wdiRegression('gdp', start, end).fit.beta, inflation: wdiRegression('inflation', start, end).fit.beta, rate: settings.rate, carbon: settings.carbon },
+    activatedBy: '', activatedAt: '',
+  };
+  const preview = GCB_PATHWAYS.flatMap(({ key: scenario, years }) => years.flatMap((year) =>
+    (['top-down', 'bottom-up'] as const).map((approach) => {
+      const input = { scenario, horizon: year, approach, eclModel: STAGED_ECL_MODEL };
+      const active = runCredit(loans, { ...input, calibration: comparison });
+      const candidate = runCredit(loans, { ...input, calibration: profile });
+      return { scenario, year, approach, baselineEcl: candidate.summary.ecl, activeEcl: active.summary.eclStressed,
+        candidateEcl: candidate.summary.eclStressed, activeShocks: active.shocks, candidateShocks: candidate.shocks };
+    })));
+  if (preview.some((row) => ![row.baselineEcl, row.activeEcl, row.candidateEcl].every(Number.isFinite))) throw new Error('The credit model did not produce finite ECL for every reporting year.');
+  const createdAt = now();
+  const execution: CalibrationExecution = {
+    profile, comparison, createdAt, createdBy: user.name,
+    dataset: { id: dataset.id, name: dataset.name, hash: dataset.hash, facilities: loans.length },
+    modelFingerprint: await runParamsHash({ scenario: 'current', horizon: 2050, approach: 'top-down', eclModel: STAGED_ECL_MODEL, calibration: profile }),
+    evidence: calibrationEvidence(profile), rateEvidence, preview,
+  };
+  await updateCalibrationStore((current) => ({
+    ...current, calibrationExecutions: [execution, ...(current.calibrationExecutions ?? [])],
+    audit: [{ at: createdAt, by: user.name, action: 'calibration.executed', target: profile.id,
+      detail: `Dataset ${dataset.id} · compared with ${comparison.id} · parameters ${execution.modelFingerprint}` }, ...current.audit],
+  }));
+  return profile.id;
+}
+
+export async function decideCalibration(id: string, action: 'activate' | 'decline', note: string) {
+  const user = await currentUser();
+  if (!user.can.includes('run' as never)) throw new Error('Your role cannot decide on calibrations.');
+  if (note.length > 1000) throw new Error('Limit decision notes to 1,000 characters.');
+  const at = now();
+  await updateCalibrationStore((current) => {
+    const execution = current.calibrationExecutions?.find((entry) => entry.profile.id === id);
+    if (!execution || execution.decision) throw new Error('This calibration is unavailable or already decided.');
+    if (action === 'activate' && (current.activeDataset !== execution.dataset.id || activeCalibration(current.calibration).id !== execution.comparison.id)) {
+      throw new Error('The active calibration or loan book changed since this preview. Execute a new calibration to review the latest comparison.');
+    }
+    return {
+      ...current,
+      calibration: action === 'activate' ? { ...execution.profile, activatedBy: user.name, activatedAt: at } : current.calibration,
+      calibrationExecutions: current.calibrationExecutions?.map((entry) => entry.profile.id === id
+        ? { ...entry, decision: { action, by: user.name, at, note } } : entry),
+      audit: [{ at, by: user.name, action: action === 'activate' ? 'calibration.activated' : 'calibration.declined',
+        target: id, detail: note }, ...current.audit],
+    };
+  });
+}
+
+function validateScenarioLoans(loans: Loan[]) {
+  if (!loans.length) throw new Error('Load a loan book before running a scenario');
+  const invalidExposure = loans.find((loan) => !Number.isFinite(loan.ead) || loan.ead <= 0);
+  if (invalidExposure) throw new Error(`Review outstanding exposure for facility ${invalidExposure.id}`);
+  const invalid = loans.find((loan) => !Number.isFinite(loan.maturityYears) || loan.maturityYears <= 0 || loan.maturityYears > MAX_ECL_MATURITY || ![1, 2, 3].includes(loan.stage));
+  if (invalid) throw new Error(`Review remaining maturity (0 < years ≤ ${MAX_ECL_MATURITY}) and IFRS 9 stage for facility ${invalid.id}`);
+}
+
 async function runParamsHash(input: RunInput) {
   const base = await paramsHash();
-  return input.eclModel ? sha256(JSON.stringify({ base, eclModel: input.eclModel, transmission: P.TRANSMISSION, damage: P.DEPTH_DAMAGE, calibration: CALIBRATION_VERSION, CCKP, NGFS, WORLD_BANK, profile: input.calibration })) : base;
+  const calibration = input.calibration;
+  const profile = calibration?.method ? {
+    id: calibration.id, method: calibration.method, rateBasis: calibration.rateBasis,
+    settings: calibration.settings, coefficients: calibration.coefficients,
+  } : calibration;
+  return input.eclModel ? sha256(JSON.stringify({ base, eclModel: input.eclModel, transmission: P.TRANSMISSION, damage: P.DEPTH_DAMAGE, calibration: CALIBRATION_VERSION, CCKP, NGFS, WORLD_BANK, profile })) : base;
 }
 
 export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | 'approach'>, years: number[], expectedCalibration?: string) {
@@ -161,20 +253,16 @@ export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | '
     throw new Error('Select eligible reporting years for the GCB pathway and an assessment approach');
   }
 
-  const calibration = (await db()).calibration;
-  if (expectedCalibration !== undefined && expectedCalibration !== (calibration?.id ?? CALIBRATION_VERSION)) {
+  const calibration = activeCalibration((await db()).calibration);
+  if (expectedCalibration !== undefined && expectedCalibration !== calibration.id) {
     throw new Error('The active Ghana calibration changed. Reload Scenario Analysis to review the new shocks.');
   }
   const { dataset, loans } = await activeLoans();
-  if (!loans.length) throw new Error('Load a loan book before running a scenario');
-  const invalidExposure = loans.find((loan) => !Number.isFinite(loan.ead) || loan.ead <= 0);
-  if (invalidExposure) throw new Error(`Review outstanding exposure for facility ${invalidExposure.id}`);
-  const invalid = loans.find((loan) => !Number.isFinite(loan.maturityYears) || loan.maturityYears <= 0 || loan.maturityYears > MAX_ECL_MATURITY || ![1, 2, 3].includes(loan.stage));
-  if (invalid) throw new Error(`Review remaining maturity (0 < years ≤ ${MAX_ECL_MATURITY}) and IFRS 9 stage for facility ${invalid.id}`);
+  validateScenarioLoans(loans);
 
   const batchId = `BATCH-${randomUUID()}`;
   const createdAt = now();
-  const input = { ...request, eclModel: STAGED_ECL_MODEL, ...(calibration ? { calibration } : {}) };
+  const input = { ...request, eclModel: STAGED_ECL_MODEL, calibration };
   const fingerprint = await runParamsHash({ ...input, horizon: horizons[0] });
   const calculated = await Promise.all(horizons.map(async (horizon) => {
     const run = runStress(loans, { ...input, horizon });
@@ -196,7 +284,7 @@ export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | '
     current.runs.unshift(...[...records].reverse());
     current.audit.unshift(
       { at: createdAt, by: user.name, action: 'scenario.batch_created', target: batchId,
-        detail: `${P.scenarioOf(input.scenario).name} · ${horizons.join(', ')} · ${input.approach} · dataset ${dataset.id} · calibration ${calibration?.id ?? CALIBRATION_VERSION}` },
+        detail: `${P.scenarioOf(input.scenario).name} · ${horizons.join(', ')} · ${input.approach} · dataset ${dataset.id} · calibration ${calibration.id}` },
       ...records.map((rec) => ({ at: createdAt, by: user.name, action: 'run.created', target: rec.id,
         detail: `${rec.input.horizon} · ${batchId} · dataset ${dataset.id}` })),
     );
