@@ -20,18 +20,20 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
   const maker = user.can.includes('run' as never);
   const checker = user.can.includes('approve' as never);
   const mayEdit = maker && pack?.status === 'draft' && pack.by === user.name;
-  const register = pack?.rows.map((row) => row.requirement) ?? REQUIREMENTS;
+  const scopedRows = pack?.rows.filter(row => !standard || row.requirement.framework === standard);
+  const catalogue = !!pack && !!standard && scopedRows?.length === 0 && REQUIREMENTS.some(row => row.framework === standard);
+  const register = catalogue ? REQUIREMENTS : pack?.rows.map((row) => row.requirement) ?? REQUIREMENTS;
   const statusById = new Map(pack?.rows.map((row) => [row.requirement.id, disclosureGaps(row)]));
-  const complete = pack?.rows.filter((row) => !disclosureGaps(row).length && row.applicability === 'applicable').length ?? 0;
-  const excluded = pack?.rows.filter((row) => !disclosureGaps(row).length && row.applicability === 'not-applicable').length ?? 0;
-  const total = pack?.rows.length ?? register.length;
+  const complete = scopedRows?.filter((row) => !disclosureGaps(row).length && row.applicability === 'applicable').length ?? 0;
+  const excluded = scopedRows?.filter((row) => !disclosureGaps(row).length && row.applicability === 'not-applicable').length ?? 0;
+  const total = scopedRows?.length ?? register.length;
   const gaps = total - complete - excluded;
-  const selected = register.find((item) => item.id === requirement);
+  const selected = register.find((item) => item.id === requirement && (!standard || item.framework === standard));
   const selectedRow = pack?.rows.find((row) => row.requirement.id === requirement);
   const example = selected ? MOCK_DISCLOSURES[selected.id] ?? (selected.framework === 'bog'
     ? `For [[reporting period]], [[responsible function]] assessed ${selected.title.toLowerCase()}. The verified position was [[finding, metric and denominator where applicable]]. Management recorded [[decision or action]] in [[source evidence and date]]. The main limitation was [[data, scope or methodology limitation]].` : undefined) : undefined;
   const olderBog = !!pack && pack.frameworks.includes('bog') && pack.version !== REGISTER_VERSION;
-  const sourceFramework = selected ? (pack?.standards ?? FRAMEWORKS)[selected.framework] : undefined;
+  const sourceFramework = selected ? (pack?.standards[selected.framework] ?? FRAMEWORKS[selected.framework]) : undefined;
   const route = (overrides: Record<string, string> = {}) => `/reports?${new URLSearchParams({
     ...(pack ? { pack: pack.id } : {}), ...(standard ? { standard } : {}), ...(filter ? { filter } : {}), ...overrides,
   })}`;
@@ -69,15 +71,16 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
       {maker && pack.by === user.name && (pack.status === 'returned' || pack.status === 'approved') && <RegulatoryReview id={pack.id} mode="revise" />}
     </Card>}
 
-    <Card title="Requirement and evidence register" className="mb-6" note={pack?.version ?? REGISTER_VERSION}>
+    <Card title="Requirement and evidence register" className="mb-6" note={catalogue ? REGISTER_VERSION : pack?.version ?? REGISTER_VERSION}>
       <p className="mb-3 text-sm text-zinc-600">Open a requirement to see its mock disclosure and the evidence to collect.</p>
       <nav aria-label="Disclosure register filters" className="mb-4 flex flex-wrap gap-2 text-sm">
         {[['', 'All frameworks'], ...Object.entries(FRAMEWORKS).map(([key, value]) => [key, value.title])].map(([key, label]) => (
-          <Link key={key} href={route({ standard: key })} aria-current={(standard ?? '') === key ? 'page' : undefined}
+          <Link key={key} href={route({ standard: key, filter: '' })} aria-current={(standard ?? '') === key ? 'page' : undefined}
             className="rounded-md border border-zinc-200 px-3 py-2 hover:bg-lime-50 aria-[current=page]:border-lime-600 aria-[current=page]:bg-lime-100">{label}</Link>
         ))}
       </nav>
-      {pack && <>
+      {catalogue && <p className="mb-3 rounded-lg bg-lime-50 p-3 text-sm">Showing the current requirements register. This reporting pack contains no entries for this framework. Create a reporting pack with the framework in scope to record evidence and track gaps.</p>}
+      {pack && !catalogue && <>
         <div className="mb-3 grid gap-2 sm:grid-cols-3">
           <div className="rounded-lg bg-lime-100 p-3 text-sm"><b>{complete}</b> applicable requirements ready for review</div>
           <Link href={route({ filter: filter === 'gaps' ? '' : 'gaps' })} aria-pressed={filter === 'gaps'} className="rounded-lg bg-amber-50 p-3 text-sm underline"><b>{gaps}</b> open gaps · {filter === 'gaps' ? 'Show all' : 'View gaps'}</Link>
@@ -90,7 +93,7 @@ export function RegulatoryWorkspace({ pack, history, sources, user, standard, re
         const entry = pack?.rows.find((item) => item.requirement.id === row.id);
         const missing = statusById.get(row.id);
         return [
-          [ (pack?.standards ?? FRAMEWORKS)[row.framework].title, row.section, row.paragraph ].filter(Boolean).join(' · '),
+          [ (pack?.standards[row.framework] ?? FRAMEWORKS[row.framework]).title, row.section, row.paragraph ].filter(Boolean).join(' · '),
           <Link key={row.id} className="font-medium underline" href={route({ requirement: row.id }) + '#requirement-detail'}>{row.title}</Link>,
           entry?.owner ?? row.owner,
           missing ? (missing.length ? `${missing.length} open · ${missing.join(', ')}` : entry?.applicability === 'not-applicable' ? 'Excluded · rationale recorded' : 'Ready') :
