@@ -16,7 +16,7 @@ import { readMatchedEvidence } from './calibration-regression';
 import { calibratedEnergy, readEnergyPath } from './calibration-energy';
 import { GCB_PATHWAYS, isGcbScenarioYear } from './gcb-scenarios';
 import { MAX_ECL_MATURITY, STAGED_ECL_MODEL } from './staged-ecl';
-import { onNetlify, readText, updateExistingBlob, writeText } from './kv';
+import { readText, remoteStore, updateExistingBlob, writeText } from './kv';
 import { CCKP } from '@/data/cckp';
 import { NGFS } from '@/data/ngfs';
 import { WORLD_BANK } from '@/data/worldbank';
@@ -75,7 +75,7 @@ const g = globalThis as unknown as { __db?: Db; __loans?: Map<string, Loan[]>; _
 g.__loans ??= new Map();
 g.__runs ??= new Map();
 
-const save = async (db: Db) => { if (!onNetlify) g.__db = db; await writeText('store.json', JSON.stringify(db, null, 1)); };
+const save = async (db: Db) => { if (!remoteStore) g.__db = db; await writeText('store.json', JSON.stringify(db, null, 1)); };
 const now = () => new Date().toISOString();
 
 export const paramsHash = () => sha256(JSON.stringify({ v: P.MODEL_VERSION, h: P.HAZARD_DATA_VERSION, R: P.REGIONS, S: P.SECTORS, C: P.COLLATERAL, SC: P.SCENARIOS, CR: P.CREDIT, L: P.LOSS_DIST, B: P.BANK }));
@@ -102,11 +102,11 @@ async function addDataset(db: Db, name: string, csv: string, by: string) {
 }
 
 export async function db(): Promise<Db> {
-  if (!onNetlify && g.__db) return g.__db;
+  if (!remoteStore && g.__db) return g.__db;
   const text = await readText('store.json');
   if (text) {
     const loaded = JSON.parse(text) as Db;
-    if (!onNetlify) g.__db = loaded;
+    if (!remoteStore) g.__db = loaded;
     return loaded;
   }
   const fresh: Db = { datasets: [], activeDataset: '', runs: [], audit: [] };
@@ -157,7 +157,7 @@ const outHash = (run: StressRun) => sha256(JSON.stringify(run.results.map((r) =>
 
 async function updateCalibrationStore(apply: (current: Db) => Db) {
   const current = await db();
-  if (onNetlify) {
+  if (remoteStore) {
     await updateExistingBlob('store.json', (data) => JSON.stringify(apply(JSON.parse(data) as Db), null, 1));
   } else {
     await save(apply(current));
@@ -311,7 +311,7 @@ export async function createScenarioBatch(request: Pick<RunInput, 'scenario' | '
     return records;
   };
 
-  if (onNetlify) {
+  if (remoteStore) {
     await updateExistingBlob('store.json', (text) => {
       const current = JSON.parse(text) as Db;
       insert(current);
