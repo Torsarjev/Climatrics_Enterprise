@@ -1,6 +1,6 @@
 import { BANK, COLLATERAL, CREDIT, HAZARDS, Hazard, Horizon, LOSS_DIST, MODEL_VERSION, REGIONS, SECTORS, ScenarioKey, sectorOf } from './params';
 import { Loan } from './portfolio';
-import { transitionScoreFromInputs, type TransitionScoreInputs } from './transition-model';
+import { normalizeTransitionIntensity, transitionScoreFromInputs, type TransitionScoreInputs } from './transition-model';
 import { clamp, normCdf, normInv, normal, rng } from './math';
 import { GhanaShocks, ghanaShocks } from './calibration';
 import { BottomUpTrace, SectorStress, bottomUp, topDownSectors } from './transmission';
@@ -38,7 +38,7 @@ export function collateralHaircut(loan: Loan, multiplier: number) {
 
 export function transitionScoreInputs(loan: Loan): TransitionScoreInputs {
   const sec = sectorOf(loan.sector);
-  const intensity = clamp(loan.emissionsIntensity / (sec.carbonIntensity * 1.4));
+  const intensity = normalizeTransitionIntensity(loan.emissionsIntensity, sec.carbonIntensity);
   const relief = loan.transitionPlan ? CREDIT.transitionReadinessRelief : 0;
   return { sensitivity: sec.transition, sectorBenchmark: sec.carbonIntensity, intensity, relief };
 }
