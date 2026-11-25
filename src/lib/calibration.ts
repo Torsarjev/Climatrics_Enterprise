@@ -13,9 +13,39 @@ const mean = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0) / xs.lengt
 const sd = (xs: readonly number[]) => { const m = mean(xs); return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1)); };
 const diffs = (xs: readonly number[]) => xs.slice(1).map((v, i) => v - xs[i]);
 
-export function evidence(key: 'gdp' | 'inflation') {
+export const DEFAULT_CALIBRATION = { start: 2000, end: 2024, rate: 1.5, carbon: 1 };
+export type CalibrationSettings = typeof DEFAULT_CALIBRATION;
+export interface CalibrationProfile {
+  id: string;
+  settings: CalibrationSettings;
+  coefficients: Record<'gdp' | 'inflation' | 'rate' | 'carbon', number>;
+  activatedAt: string;
+  activatedBy: string;
+}
+
+export function readCalibration(get: (key: string) => unknown): CalibrationSettings {
+  const settings = { ...DEFAULT_CALIBRATION };
+  for (const key of Object.keys(settings) as (keyof CalibrationSettings)[]) {
+    const value = get(key);
+    if (typeof value !== 'string' || !value.trim()) throw new Error('Enter a value for each calibration setting.');
+    settings[key] = Number(value);
+  }
+  if (!Number.isInteger(settings.start) || !Number.isInteger(settings.end)
+    || settings.start < DEFAULT_CALIBRATION.start || settings.end > DEFAULT_CALIBRATION.end
+    || settings.end - settings.start < 4) throw new Error('Select at least five consecutive years within 2000–2024.');
+  if ([settings.rate, settings.carbon].some((value) => !Number.isFinite(value) || value < 0 || value > 10)) {
+    throw new Error('Enter rate and carbon multipliers from 0 to 10.');
+  }
+  if (['gdp', 'inflation'].some((key) => !Number.isFinite(evidence(key as 'gdp' | 'inflation', settings).coefficient))) {
+    throw new Error('The regional series needs variation in annual changes. Select a longer sample.');
+  }
+  return settings;
+}
+
+export function evidence(key: 'gdp' | 'inflation', { start, end } = DEFAULT_CALIBRATION) {
   const s = WORLD_BANK.series[key];
-  const x = s.ssa, y = s.ghana, n = x.length;
+  const selected = s.years.flatMap((year, i) => year >= start && year <= end ? [i] : []);
+  const x = selected.map((i) => s.ssa[i]), y = selected.map((i) => s.ghana[i]), n = x.length;
   const mx = mean(x), my = mean(y);
   const sxx = x.reduce((a, v) => a + (v - mx) ** 2, 0);
   const sxy = x.reduce((a, v, i) => a + (v - mx) * (y[i] - my), 0);
@@ -23,7 +53,7 @@ export function evidence(key: 'gdp' | 'inflation') {
   const beta = sxy / sxx;
   return {
     key, indicator: s.indicator, label: s.label, url: s.url, lastUpdated: s.lastUpdated,
-    from: s.years[0], to: s.years[n - 1], n,
+    from: start, to: end, n,
     coefficient: sd(diffs(y)) / sd(diffs(x)),
     sdGhana: sd(diffs(y)), sdRegion: sd(diffs(x)),
     regression: { beta, alpha: my - beta * mx, r2: (sxy * sxy) / (sxx * syy) },
@@ -101,28 +131,55 @@ function regional(key: ScenarioKey, year: number, v: Variable): { value: number;
   return { value: 1 + mean(parts), source: `CCKP ${SSP_LABEL[ssp]}: Rx5day ${(parts[0] * 100).toFixed(1)}%, hot days ${(parts[1] * 100).toFixed(1)}%, dry days ${(parts[2] * 100).toFixed(1)}%` };
 }
 
-export function calibrate(key: ScenarioKey, year: number, v: Variable) {
-  const r = regional(key, year, v), c = VARIABLES[v].coefficient();
+export function calibrate(key: ScenarioKey, year: number, v: Variable, profile?: CalibrationProfile) {
+  const r = regional(key, year, v);
+  const c = profile && v !== 'flood' && v !== 'physical' ? profile.coefficients[v] : VARIABLES[v].coefficient();
   const ghana = v === 'flood' || v === 'physical' ? 1 + (r.value - 1) * c : r.value * c;
   return { regional: r.value, source: r.source, coefficient: c, ghana };
 }
 
 export interface GhanaShocks { gdp: number; inflation: number; rate: number; carbon: number; flood: number; physical: number; transition: number }
 
-export function ghanaShocks(key: ScenarioKey, year: number): GhanaShocks {
-  const g = (v: Variable) => calibrate(key, year, v).ghana;
+export function ghanaShocks(key: ScenarioKey, year: number, profile?: CalibrationProfile): GhanaShocks {
+  const g = (v: Variable) => calibrate(key, year, v, profile).ghana;
   return { gdp: g('gdp'), inflation: g('inflation'), rate: g('rate'), carbon: g('carbon'), flood: g('flood'), physical: g('physical'), transition: transitionAt(key, year) };
 }
 
-export function calibrationRows(key?: ScenarioKey) {
+export function calibrationRows(key?: ScenarioKey, profile?: CalibrationProfile) {
   const pathways = key
     ? [{ key, years: GCB_PATHWAYS.find((pathway) => pathway.key === key)?.years ?? HORIZONS }]
     : GCB_PATHWAYS;
   return pathways.flatMap(({ key, years }) => years.flatMap((year) => (Object.keys(VARIABLES) as Variable[]).map((v) => {
-    const c = calibrate(key, year, v);
+    const c = calibrate(key, year, v, profile);
     return {
       scenario: scenarioOf(key).name, scenarioKey: key, release: NGFS_RELEASE, region: NGFS_REGION, year, variable: VARIABLES[v].label, unit: VARIABLES[v].unit,
-      regional: c.regional, source: c.source, coefficient: c.coefficient, ghana: c.ghana, method: VARIABLES[v].method, status: VARIABLES[v].status, version: CALIBRATION_VERSION,
+      regional: c.regional, source: c.source, coefficient: c.coefficient, ghana: c.ghana, method: calibrationMethod(v, profile), status: VARIABLES[v].status, version: profile?.id ?? CALIBRATION_VERSION,
     };
   })));
+}
+
+export function calibrationMethod(v: Variable, profile?: CalibrationProfile) {
+  if (!profile) return VARIABLES[v].method;
+  if (v === 'gdp' || v === 'inflation') return VARIABLES[v].method.replace('2000–2024', `${profile.settings.start}–${profile.settings.end}`);
+  if (v === 'rate') return `NiGEM Africa long-term rate deviation at the horizon × ${profile.coefficients.rate} (user-selected assumption)`;
+  if (v === 'carbon') return `GCAM Western Africa carbon price at the horizon × ${profile.coefficients.carbon} (user-selected assumption). Facility coverage and cost pass-through apply downstream.`;
+  return VARIABLES[v].method;
+}
+
+export function calibrationEvidence(profile?: CalibrationProfile) {
+  return {
+    version: CALIBRATION_VERSION, profile: profile ?? null, settings: profile?.settings ?? DEFAULT_CALIBRATION,
+    sources: { worldBankWdi: WORLD_BANK, ngfs: NGFS, worldBankCckp: CCKP },
+    physicalPathwayMapping: SSP_FOR, gdpLookbackYears: STRESS_WINDOW,
+    transitionPolicyIndex: Object.fromEntries(GCB_PATHWAYS.map(({ key }) => [key, scenarioOf(key).transitionShock])),
+    diagnostics: [evidence('gdp', profile?.settings), evidence('inflation', profile?.settings)],
+    calibratedResults: calibrationRows(undefined, profile),
+  };
+}
+
+export function calibrationCoefficients(settings: CalibrationSettings): CalibrationProfile['coefficients'] {
+  return {
+    gdp: evidence('gdp', settings).coefficient, inflation: evidence('inflation', settings).coefficient,
+    rate: settings.rate, carbon: settings.carbon,
+  };
 }

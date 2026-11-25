@@ -3,7 +3,8 @@
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { USERS, mfaEnrolledAt, setMfaEnrolled, attachEvidence, audit, createScenarioBatch, createScreenRun, ingest, reproduce, review, reviewScreenRun, sessionUser } from '@/lib/store';
+import { readCalibration } from '@/lib/calibration';
+import { USERS, activateCalibration, mfaEnrolledAt, setMfaEnrolled, attachEvidence, audit, createScenarioBatch, createScreenRun, ingest, reproduce, review, reviewScreenRun, sessionUser } from '@/lib/store';
 import { savePortfolioScreening } from '@/lib/esg/portfolio';
 import type { ScreenInput } from '@/lib/esg/engine';
 import { ACCOUNTS, MFA_COOKIE, SESSION_COOKIE, authConfigured, checkPassword, clearFails, createMfaPending, createSession, lockedFor, mfaRequired, readMfaPending, recordFail, verifyTotp } from '@/lib/auth';
@@ -88,10 +89,21 @@ export async function ingestAction(_: unknown, form: FormData) {
   return { ok: true };
 }
 
+export async function activateCalibrationAction(_: unknown, form: FormData) {
+  try {
+    await activateCalibration(readCalibration((key) => form.get(key)));
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  revalidatePath('/calibration');
+  revalidatePath('/stress');
+  redirect('/calibration');
+}
+
 export async function runAction(_: unknown, form: FormData) {
   let id: string;
   try {
-    id = await createScenarioBatch({ scenario: form.get('scenario') as ScenarioKey, approach: form.get('approach') as Approach }, form.getAll('horizon').map(Number));
+    id = await createScenarioBatch({ scenario: form.get('scenario') as ScenarioKey, approach: form.get('approach') as Approach }, form.getAll('horizon').map(Number), String(form.get('calibration') ?? ''));
   } catch (e) {
     return { error: (e as Error).message };
   }

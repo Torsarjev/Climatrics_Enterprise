@@ -2,12 +2,12 @@ import { BANK, COLLATERAL, CREDIT, HAZARDS, Hazard, LOSS_DIST, MODEL_VERSION, RE
 import { Loan } from './portfolio';
 import { normalizeTransitionIntensity, transitionScoreFromInputs, type TransitionScoreInputs } from './transition-model';
 import { clamp, normCdf, normInv, normal, rng } from './math';
-import { GhanaShocks, ghanaShocks } from './calibration';
+import { CalibrationProfile, GhanaShocks, ghanaShocks } from './calibration';
 import { STAGED_ECL_MODEL, stagedEcl } from './staged-ecl';
 import { BottomUpTrace, SectorStress, bottomUp, topDownSectors } from './transmission';
 
 export type Approach = 'bottom-up' | 'top-down';
-export interface RunInput { scenario: ScenarioKey; horizon: number; approach: Approach; eclModel?: typeof STAGED_ECL_MODEL }
+export interface RunInput { scenario: ScenarioKey; horizon: number; approach: Approach; eclModel?: typeof STAGED_ECL_MODEL; calibration?: CalibrationProfile }
 
 export interface LoanResult {
   id: string; borrower: string; sector: string; region: string; ead: number;
@@ -54,7 +54,7 @@ export function runStress(loans: Loan[], input: RunInput) {
 }
 
 export function runCredit(loans: Loan[], input: RunInput) {
-  const G: GhanaShocks = ghanaShocks(input.scenario, input.horizon);
+  const G: GhanaShocks = ghanaShocks(input.scenario, input.horizon, input.calibration);
   const phys = G.physical;
   const scores = new Map(loans.map((l) => [l.id, physicalScore(l, phys)]));
   const sectors: SectorStress[] = topDownSectors(loans, G, (l) => scores.get(l.id)!.score);

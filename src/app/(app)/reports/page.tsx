@@ -1,3 +1,4 @@
+import { CALIBRATION_VERSION } from '@/lib/calibration';
 import Link from 'next/link';
 import { db, getRun, screenRuns } from '@/lib/store';
 import { financedBook } from '@/lib/emissions';
@@ -157,6 +158,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <h3 className="mb-2 text-sm font-semibold">9. Methodology, data and governance</h3>
           <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-700">
             <li>Data: {dataset.name} ({dataset.id}, SHA-256 {dataset.hash.slice(0, 16)}…), {dataset.control.rowsAccepted} facilities accepted, {dataset.control.rowsRejected} rejected, reconciled.</li>
+            <li>Ghana scenario calibration <Link className="underline" href={`/calibration?run=${rec.id}`}>{rec.input.calibration?.id ?? CALIBRATION_VERSION}</Link>.</li>
             <li>Model {rec.modelVersion}; hazard data {rec.hazardVersion}; parameters {rec.paramsHash.slice(0, 16)}…; loss simulation seed {rec.seed}.</li>
             <li>Prepared by {rec.by} on {when(rec.createdAt)}{rec.reviewedBy ? `; ${rec.status === 'approved' ? 'approved' : 'reviewed'} by ${rec.reviewedBy} on ${rec.reviewedAt ? when(rec.reviewedAt) : ''}` : '; not yet approved'}.</li>
             <li>Limitations: synthetic portfolio; illustrative scenario and model parameters pending methodology sign-off and independent validation.</li>

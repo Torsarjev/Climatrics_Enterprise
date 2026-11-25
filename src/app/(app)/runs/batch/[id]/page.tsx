@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Badge, Card, PageHead, Table } from '@/components/ui';
 import { ghs, pct, pp, when } from '@/lib/fmt';
+import { CALIBRATION_VERSION } from '@/lib/calibration';
 import { scenarioOf } from '@/lib/params';
 import { scenarioBatchRuns } from '@/lib/store';
 
@@ -42,6 +43,7 @@ export default async function ScenarioBatchPage({ params }: { params: Promise<{ 
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <div><dt className="text-zinc-500">Batch reference</dt><dd className="break-all font-mono">{id}</dd></div>
           <div><dt className="text-zinc-500">Dataset fingerprint</dt><dd className="break-all font-mono">{first.datasetHash}</dd></div>
+          <div><dt className="text-zinc-500">Ghana calibration</dt><dd><Link className="underline" href={`/calibration?run=${first.id}&scenario=${first.input.scenario}`}>{first.input.calibration?.id ?? CALIBRATION_VERSION}</Link></dd></div>
           <div><dt className="text-zinc-500">Model version</dt><dd>{first.modelVersion}</dd></div>
           <div><dt className="text-zinc-500">Parameters fingerprint</dt><dd className="break-all font-mono">{first.paramsHash}</dd></div>
         </dl>

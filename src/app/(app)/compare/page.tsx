@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { activeLoans } from '@/lib/store';
+import { notFound } from 'next/navigation';
+import { CALIBRATION_VERSION } from '@/lib/calibration';
+import { activeLoans, db, getRun } from '@/lib/store';
 import { ScenarioKey, scenarioOf } from '@/lib/params';
 import { GCB_PATHWAYS } from '@/lib/gcb-scenarios';
 import { STAGED_ECL_MODEL } from '@/lib/staged-ecl';
@@ -14,14 +16,19 @@ const FLOWS = [
   { title: 'Bottom-up approach', sub: 'Individual borrower assessment', steps: ['NGFS scenario', 'Borrower-specific climate shocks', 'Revenue, costs and collateral', 'Stressed CFADS and DSCR', 'Borrower PD, LGD and ECL', 'Aggregate portfolio impact'] },
 ];
 
-export default async function ComparePage({ searchParams }: { searchParams: Promise<{ scenario?: string; horizon?: string }> }) {
+export default async function ComparePage({ searchParams }: { searchParams: Promise<{ scenario?: string; horizon?: string; run?: string }> }) {
   const q = await searchParams;
-  const pathway = GCB_PATHWAYS.find((item) => item.key === q.scenario) ?? GCB_PATHWAYS[2];
-  const { key } = pathway;
-  const horizon = pathway.years.includes(Number(q.horizon)) ? Number(q.horizon) : pathway.years.at(-1)!;
-  const { loans } = await activeLoans();
-  const td = runCredit(loans, { scenario: key, horizon, approach: 'top-down', eclModel: STAGED_ECL_MODEL });
-  const bu = runCredit(loans, { scenario: key, horizon, approach: 'bottom-up', eclModel: STAGED_ECL_MODEL });
+  const saved = q.run ? await getRun(q.run, true) : null;
+  if (q.run && !saved) notFound();
+  const scenario = saved?.rec.input.scenario ?? q.scenario;
+  const pathway = GCB_PATHWAYS.find((item) => item.key === scenario) ?? GCB_PATHWAYS[2];
+  const key = saved?.rec.input.scenario ?? pathway.key;
+  const horizon = saved?.rec.input.horizon ?? (pathway.years.includes(Number(q.horizon)) ? Number(q.horizon) : pathway.years.at(-1)!);
+  const loans = saved?.loans ?? (await activeLoans()).loans;
+  const calibration = saved ? saved.rec.input.calibration : (await db()).calibration;
+  const input = saved?.rec.input ?? { scenario: key, horizon, eclModel: STAGED_ECL_MODEL, calibration };
+  const td = runCredit(loans, { ...input, approach: 'top-down' });
+  const bu = runCredit(loans, { ...input, approach: 'bottom-up' });
   const G = bu.shocks;
   const rows = td.summary.bySector.map((t, i) => {
     const b = bu.summary.bySector[i];
@@ -39,13 +46,13 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
     <>
       <PageHead area="Engine III · Scenario analysis" title="Top-down versus bottom-up" intro="Both approaches read the same Ghana-calibrated NGFS shocks. The difference is the level at which climate shocks become financial risk: sector averages (top-down) or each borrower’s cash flows and collateral (bottom-up)." />
 
-      <Card>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+      <Card title={saved ? `Saved inputs · ${saved.rec.id}` : `Active Ghana calibration · ${calibration?.id ?? CALIBRATION_VERSION}`}>
+        {saved ? <Link href={link(key, horizon)} className="text-sm underline">Explore with active inputs</Link> : <div className="flex flex-wrap items-center gap-2 text-sm">
           {GCB_PATHWAYS.map((s) => <Link key={s.key} href={link(s.key, s.key === key ? horizon : s.years.at(-1)!)} className={`rounded-md px-2.5 py-1 ring-1 ${s.key === key ? 'bg-[#1b2c3e] text-white ring-[#1b2c3e]' : 'ring-zinc-300 hover:bg-zinc-100'}`}>{s.name}</Link>)}
           <span className="mx-2 text-zinc-300">|</span>
           {pathway.years.map((h) => <Link key={h} href={link(key, h)} className={`rounded-md px-2.5 py-1 ring-1 ${h === horizon ? 'bg-[#1b2c3e] text-white ring-[#1b2c3e]' : 'ring-zinc-300 hover:bg-zinc-100'}`}>{h}</Link>)}
-        </div>
-        <p className="mt-3 text-sm text-zinc-600">Ghana shocks for {scenarioOf(key).name} {horizon}: GDP {G.gdp.toFixed(1)}% · inflation {G.inflation >= 0 ? '+' : ''}{G.inflation.toFixed(1)} pp · long rate {G.rate >= 0 ? '+' : ''}{G.rate.toFixed(1)} pp · carbon ${G.carbon.toFixed(0)}/t · extreme rain ×{G.flood.toFixed(2)} · <Link href={`/calibration?scenario=${key}`} className="underline">how these were calibrated</Link></p>
+        </div>}
+        <p className="mt-3 text-sm text-zinc-600">Ghana shocks for {scenarioOf(key).name} {horizon}: GDP {G.gdp.toFixed(1)}% · inflation {G.inflation >= 0 ? '+' : ''}{G.inflation.toFixed(1)} pp · long rate {G.rate >= 0 ? '+' : ''}{G.rate.toFixed(1)} pp · carbon ${G.carbon.toFixed(0)}/t · extreme rain ×{G.flood.toFixed(2)} · <Link href={`/calibration?scenario=${key}${saved ? `&run=${saved.rec.id}` : ''}`} className="underline">how these were calibrated</Link></p>
       </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">

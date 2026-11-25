@@ -10,7 +10,7 @@ interface Pathway {
   points: { year: number; shocks: GhanaShocks }[];
 }
 
-export function RunForm({ pathways }: { pathways: Pathway[] }) {
+export function RunForm({ pathways, calibration }: { pathways: Pathway[]; calibration: string }) {
   const [state, action, pending] = useActionState(runAction, null);
   const [key, setKey] = useState('current');
   const pathway = pathways.find((item) => item.key === key)!;
@@ -20,6 +20,7 @@ export function RunForm({ pathways }: { pathways: Pathway[] }) {
 
   return (
     <form action={action} className="space-y-5">
+      <input type="hidden" name="calibration" value={calibration} />
       <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
         <label className="min-w-0 text-sm font-medium">NGFS pathway
           <select name="scenario" value={key} className={field} disabled={pending} onChange={(event) => {
