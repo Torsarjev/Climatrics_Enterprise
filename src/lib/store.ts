@@ -10,8 +10,9 @@ import { ScreenInput, type ScreenResult, neededEvidence, screen, validate } from
 import { CRITERIA, FRAMEWORK_VERSIONS, QUESTIONS } from './esg/rules';
 import * as P from './params';
 import { sha256 } from './math';
-import { CALIBRATION_VERSION, REGRESSION_VERSION, activeCalibration, CalibrationProfile, calibrationEvidence, ghanaShocks, readRegressionWindow, wdiRegression } from './calibration';
+import { CALIBRATION_VERSION, REGRESSION_VERSION, activeCalibration, calibrate, calibrationMethod, CalibrationProfile, calibrationEvidence, ghanaShocks, readRegressionWindow, wdiRegression } from './calibration';
 import { ICAAP_VERSION, icaapBatchMismatch, projectCapital, readFinanceCsv, type FinancePeriod, type IcaapAssessment, type IcaapOpening, type IcaapSource } from './icaap';
+import { DEMO_TREASURY, ILAAP_BUCKETS, ILAAP_MODEL, projectLiquidity, readTreasuryInputs, type IlaapActions, type IlaapAssessment } from './ilaap';
 import { scenarioReporting } from './scenario-report';
 import { readBenchmark } from './regression-models';
 import { readMatchedEvidence } from './calibration-regression';
@@ -71,7 +72,7 @@ export interface CalibrationExecution {
   decision?: { action: 'activate' | 'decline'; by: string; at: string; note: string };
 }
 
-interface Db { icaap?: IcaapAssessment[]; calibration?: CalibrationProfile; calibrationExecutions?: CalibrationExecution[]; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
+interface Db { ilaap?: IlaapAssessment[]; icaap?: IcaapAssessment[]; calibration?: CalibrationProfile; calibrationExecutions?: CalibrationExecution[]; datasets: Dataset[]; activeDataset: string; runs: RunRecord[]; audit: AuditEvent[]; screenRuns?: ScreenRunRecord[]; mfa?: Record<string, string> }
 
 const g = globalThis as unknown as { __db?: Db; __loans?: Map<string, Loan[]>; __runs?: Map<string, StressRun> };
 g.__loans ??= new Map();
@@ -490,6 +491,81 @@ export async function reviewIcaap(id: string, action: string, note: string) {
       } : entry),
       audit: [{ at, by: user.name, action: `icaap.${status}`, target: id, detail: note }, ...current.audit],
     };
+  });
+}
+
+export async function createIlaap(form: FormData) {
+  const user = await currentUser();
+  if (!user.can.includes('run' as never)) throw new Error('Only an analyst can run liquidity stress tests.');
+  const d = await db();
+  const profile = activeCalibration(d.calibration);
+  const selected = new Set(form.getAll('scenario'));
+  const pathways = GCB_PATHWAYS.filter(({ key }) => selected.has(key));
+  if (!pathways.length || selected.size !== pathways.length) throw new Error('Select supported NGFS pathways.');
+  const mode = form.get('mode');
+  if (mode !== 'demo' && mode !== 'upload') throw new Error('Choose the Treasury input source.');
+  const illustrative = mode === 'demo';
+  const file = form.get('treasury');
+  let raw: unknown = DEMO_TREASURY;
+  if (!illustrative) {
+    if (!(file instanceof File) || !file.size || file.size > 250000) throw new Error('Upload a Treasury JSON file under 250 KB.');
+    try { raw = JSON.parse(await file.text()); } catch { throw new Error('The Treasury file could not be read as JSON.'); }
+  }
+  const inputs = readTreasuryInputs(raw);
+  if (inputs.asOf >= `${Math.min(...pathways.flatMap(({ years }) => years))}-12-31`) {
+    throw new Error('The Treasury snapshot must precede the earliest selected scenario year-end.');
+  }
+  const number = (key: string, max: number) => {
+    const value = form.get(key);
+    const amount = Number(value);
+    if (typeof value !== 'string' || !value.trim() || !Number.isFinite(amount) || amount < 0 || amount > max) throw new Error(`Invalid ${key}.`);
+    return amount;
+  };
+  const actions: IlaapActions = {
+    funding: number('funding', 1e15), fundingDay: number('fundingDay', 365), repaymentDay: number('repaymentDay', 365),
+    fundingFeePct: number('fundingFeePct', 100), salePct: number('salePct', 100), saleDay: number('saleDay', 365),
+    saleDiscountPct: number('saleDiscountPct', 100), additionalOutflow: number('additionalOutflow', 1e15),
+  };
+  if (![actions.fundingDay, actions.repaymentDay, actions.saleDay].every((day) => ILAAP_BUCKETS.some((end) => end === day)) ||
+    (actions.funding > 0 && actions.repaymentDay <= actions.fundingDay)) throw new Error('Use valid action buckets and repay funding after it is raised.');
+  const rows = pathways.flatMap(({ key, years }) => years.map((year) => {
+    const variables = (['gdp', 'inflation', 'rate'] as const).map((variable) => {
+      const result = calibrate(key, year, variable, profile);
+      return { variable, ...result, method: calibrationMethod(variable, profile) };
+    });
+    const [gdp, inflation, rate] = variables;
+    if (![gdp.ghana, inflation.ghana, rate.ghana].every(Number.isFinite)) throw new Error(`Required macro data unavailable for ${key} ${year}.`);
+    return projectLiquidity(inputs, { scenario: key, year, horizon: key === 'nz2050' ? 'Short' : key === 'delayed' ? 'Medium' : 'Long',
+      gdp: gdp.ghana, inflation: inflation.ghana, rate: rate.ghana, sources: variables }, actions);
+  }));
+  const evidence = { version: ILAAP_MODEL, illustrative, weights: profile.coefficients, calibration: profile.id,
+    release: `${NGFS.release} · ${NGFS.macroModel}`, region: NGFS.macroRegion, inputs, actions, rows };
+  const record: IlaapAssessment = { id: `ILAAP-${randomUUID()}`, by: user.name, at: now(), status: 'draft',
+    hash: await sha256(JSON.stringify(evidence)), ...evidence };
+  await updateCalibrationStore((current) => ({ ...current, ilaap: [record, ...(current.ilaap ?? [])],
+    audit: [{ at: record.at, by: user.name, action: 'ilaap.created', target: record.id, detail: record.hash }, ...current.audit] }));
+  return record.id;
+}
+
+export async function reviewIlaap(id: string, decision: string, note: string, approvalReference: string) {
+  const user = await currentUser();
+  const at = now();
+  if (!['submit', 'approve', 'reject'].includes(decision) || note.length > 1000 || approvalReference.length > 200) throw new Error('Invalid review details.');
+  await updateCalibrationStore((current) => {
+    const record = current.ilaap?.find((entry) => entry.id === id);
+    if (!record) throw new Error('ILAAP assessment unavailable.');
+    if (decision === 'submit') {
+      if (!user.can.includes('run' as never) || record.status !== 'draft' || record.by !== user.name) throw new Error('Only the maker can submit this draft.');
+    } else if (!user.can.includes('approve' as never) || record.status !== 'submitted' || record.by === user.name) {
+      throw new Error('An independent checker must review the submitted assessment.');
+    }
+    if (decision === 'approve' && (!approvalReference || record.illustrative)) {
+      throw new Error('Approval requires reconciled uploaded Treasury data and a Treasury/ALCO sign-off reference.');
+    }
+    const status = decision === 'submit' ? 'submitted' : decision === 'approve' ? 'approved' : 'rejected';
+    return { ...current, ilaap: current.ilaap?.map((entry) => entry.id === id ? {
+      ...entry, status, ...(decision === 'submit' ? {} : { reviewer: user.name, reviewedAt: at, note, approvalReference }),
+    } : entry), audit: [{ at, by: user.name, action: `ilaap.${status}`, target: id, detail: approvalReference || note }, ...current.audit] };
   });
 }
 
